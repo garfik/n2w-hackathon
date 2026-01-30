@@ -3,6 +3,7 @@ import { authRoutes } from "./auth";
 import { meRoutes } from "./me";
 import { dbRoutes } from "./db";
 import { helloRoutes } from "./hello";
+import { storageRoutes } from "./storage";
 
 export function getRoutes() {
   return {
@@ -10,6 +11,7 @@ export function getRoutes() {
     ...meRoutes,
     ...dbRoutes,
     ...helloRoutes,
+    ...storageRoutes,
     "/*": index,
   };
 }
