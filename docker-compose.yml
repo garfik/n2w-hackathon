@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16
+    container_name: n2w_db
+    environment:
+      POSTGRES_DB: n2w
+      POSTGRES_USER: n2w
+      POSTGRES_PASSWORD: n2w
+    ports:
+      - "7003:5432"
+    volumes:
+      - n2w_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n2w -d n2w"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+volumes:
+  n2w_pgdata:
