@@ -1,12 +1,12 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@components/ui/card";
 import { APITester } from "./APITester";
 import { AvatarBodyProfileSchema } from "@shared/schemas/avatar";
-import "./index.css";
+import "./styles/index.css";
 
 console.log("schema ok", !!AvatarBodyProfileSchema);
 
-import logo from "./logo.svg";
-import reactLogo from "./react.svg";
+import logo from "./assets/logo.svg";
+import reactLogo from "./assets/react.svg";
 
 export function App() {
   return (
