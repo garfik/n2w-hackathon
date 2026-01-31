@@ -94,6 +94,17 @@ export function APITester() {
     }
   };
 
+  const handleGeminiHealth = async () => {
+    setOutput("Fetching /api/gemini/health...");
+    try {
+      const res = await fetch("/api/gemini/health", { credentials: "include" });
+      const data = await res.json();
+      setOutput(JSON.stringify(data, null, 2));
+    } catch (err) {
+      setOutput(String(err));
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       {/* Auth: email/password form + actions */}
@@ -139,6 +150,7 @@ export function APITester() {
           <Button type="button" variant="secondary" onClick={handleSignIn}>Sign In</Button>
           <Button type="button" variant="outline" onClick={handleSignOut}>Sign Out</Button>
           <Button type="button" variant="outline" onClick={handleGetMe}>Get Me</Button>
+          <Button type="button" variant="outline" onClick={handleGeminiHealth}>Gemini health</Button>
         </div>
       </div>
 
