@@ -4,7 +4,10 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
+import { logger } from "@server/lib/logger";
 import { GeminiClientError } from "./errors";
+
+const log = logger.child({ module: "gemini" });
 
 const DEFAULT_TIMEOUT_MS = 25_000;
 const MAX_RETRIES = 2;
@@ -86,7 +89,7 @@ export async function generateText(options: GenerateTextOptions): Promise<string
       clearTimeout(timeout);
       const latencyMs = Date.now() - start;
       const text = (response.text ?? "").trim();
-      console.info(`[gemini] request-id=${requestId} latency_ms=${latencyMs} ok`);
+      log.info({ requestId, latencyMs }, "ok");
       return text;
     } catch (err) {
       clearTimeout(timeout);
@@ -94,14 +97,15 @@ export async function generateText(options: GenerateTextOptions): Promise<string
       const status = getStatusFromError(err);
 
       if (err instanceof Error && err.name === "AbortError") {
-        console.warn(`[gemini] request-id=${requestId} timeout latency_ms=${latencyMs}`);
+        log.warn({ requestId, latencyMs }, "timeout");
         throw new GeminiClientError("Gemini request timeout", "GEMINI_TIMEOUT");
       }
 
       if (status !== undefined && isRetryableStatus(status) && attempt < MAX_RETRIES) {
         const backoff = delayMs(attempt);
-        console.warn(
-          `[gemini] request-id=${requestId} status=${status} attempt=${attempt + 1} retry_in_ms=${backoff} latency_ms=${latencyMs}`
+        log.warn(
+          { requestId, status, attempt: attempt + 1, retryInMs: backoff, latencyMs },
+          "retry"
         );
         await new Promise((r) => setTimeout(r, backoff));
         lastError = err instanceof Error ? err : new Error(String(err));
@@ -110,8 +114,9 @@ export async function generateText(options: GenerateTextOptions): Promise<string
 
       if (isRetryableNetwork(err) && attempt < MAX_RETRIES) {
         const backoff = delayMs(attempt);
-        console.warn(
-          `[gemini] request-id=${requestId} network_error attempt=${attempt + 1} retry_in_ms=${backoff} latency_ms=${latencyMs}`
+        log.warn(
+          { requestId, attempt: attempt + 1, retryInMs: backoff, latencyMs },
+          "network_error retry"
         );
         await new Promise((r) => setTimeout(r, backoff));
         lastError = err instanceof Error ? err : new Error(String(err));

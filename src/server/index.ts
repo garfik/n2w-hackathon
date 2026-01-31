@@ -1,5 +1,6 @@
 import { serve } from "bun";
 import { getRoutes } from "./routes";
+import { logger } from "./lib/logger";
 
 const server = serve({
   routes: getRoutes(),
@@ -10,4 +11,4 @@ const server = serve({
   },
 });
 
-console.log(`🚀 Server running at ${server.url}`);
+logger.info(`🚀 Server running at ${server.url}`);

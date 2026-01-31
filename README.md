@@ -12,9 +12,10 @@ Copy `.env.example` to `.env` and set:
 
 - `DATABASE_URL` – Postgres connection string
 - `BETTER_AUTH_SECRET` – long random secret for auth
-- `BUN_PUBLIC_BETTER_AUTH_URL` – app URL (e.g. `http://localhost:3000`). 
+- `BUN_PUBLIC_BETTER_AUTH_URL` – app URL (e.g. `http://localhost:7001`).
+- `GEMINI_API_KEY` – (optional) Google Gemini API key for `/api/gemini/health` ping. Get it at [Google AI Studio](https://aistudio.google.com/apikey).
 
-Keep in mind, that everything that starts with `BUN_PUBLIC_` can be used and visible on the client side
+Keep in mind, that everything that starts with `BUN_PUBLIC_` can be used and visible on the client side.
 
 ## Run order (first time / after clone)
 
