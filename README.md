@@ -1,4 +1,4 @@
-# bun-react-tailwind-shadcn-template
+# Nothing 2 Wear - Hackathon idea
 
 To install dependencies:
 
@@ -17,11 +17,17 @@ Copy `.env.example` to `.env` and set:
 
 Keep in mind, that everything that starts with `BUN_PUBLIC_` can be used and visible on the client side.
 
-## Run order (first time / after clone)
+## Run order
 
-1. Start DB: `bun run env:up`
-4. Apply migrations: `bun run db:migrate`
-5. Start dev server: `bun run dev`
+1. Make sure that .env is available
+2. Start dev environment: `bun run env:up`
+3. Apply migrations: `bun run db:migrate`
+4. Start dev server: `bun run dev`
+
+This should spin up few services:
+* website with api - http://localhost:7001
+* s3 browser (minio) - http://localhost:7004
+* postgresql browser - http://localhost:7005
 
 ## Scripts
 
@@ -34,5 +40,3 @@ Keep in mind, that everything that starts with `BUN_PUBLIC_` can be used and vis
 - `bun run db:generate` – generate Drizzle migration SQL
 - `bun run db:migrate` – run migrations
 - `bun run db:studio` – open Drizzle Studio
-
-This project was created using `bun init` in bun v1.3.8. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.

@@ -49,6 +49,38 @@ services:
       "
     restart: "no"
 
+  adminer:
+    image: adminer
+    restart: always
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+      ADMINER_DEFAULT_USERNAME: n2w
+      ADMINER_DEFAULT_PASSWORD: n2w
+      ADMINER_DEFAULT_DB: n2w
+    depends_on:
+      - db
+    configs:
+      - source: adminer-index.php
+        target: /var/www/html/index.php
+        mode: 0755
+    ports:
+      - 7005:8080
+
 volumes:
   n2w_pgdata:
   n2w_minio:
+
+configs:
+  adminer-index.php:
+    content: |
+      <?php
+        if(!count($$_GET)) {
+          $$_POST['auth'] = [
+            'server' => $$_ENV['ADMINER_DEFAULT_SERVER'],
+            'driver' => 'pgsql',
+            'username' => $$_ENV['ADMINER_DEFAULT_USERNAME'],
+            'password' => $$_ENV['ADMINER_DEFAULT_PASSWORD'],
+            'db' => $$_ENV['ADMINER_DEFAULT_DB'],
+          ];
+        }
+        include './adminer.php';
