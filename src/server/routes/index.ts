@@ -2,6 +2,9 @@ import index from "../../client/index.html";
 import { authRoutes } from "./auth";
 import { meRoutes } from "./me";
 import { appRoutes } from "./app";
+import { avatarsRoutes } from "./avatars";
+import { garmentsRoutes } from "./garments";
+import { outfitsRoutes } from "./outfits";
 import { dbRoutes } from "./db";
 import { helloRoutes } from "./hello";
 import { storageRoutes } from "./storage";
@@ -12,6 +15,9 @@ export function getRoutes() {
     ...authRoutes,
     ...meRoutes,
     ...appRoutes,
+    ...avatarsRoutes,
+    ...garmentsRoutes,
+    ...outfitsRoutes,
     ...dbRoutes,
     ...helloRoutes,
     ...storageRoutes,

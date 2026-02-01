@@ -9,11 +9,18 @@
       "tag": "0000_bored_sunset_bain",
       "breakpoints": true
     },
+{
+  "idx": 1,
+  "version": "7",
+  "when": 1769727498977,
+  "tag": "0001_magenta_wolverine",
+  "breakpoints": true
+},
     {
-      "idx": 1,
+      "idx": 2,
       "version": "7",
-      "when": 1769727498977,
-      "tag": "0001_magenta_wolverine",
+      "when": 1769730000000,
+      "tag": "0002_outfit_tables",
       "breakpoints": true
     }
   ]

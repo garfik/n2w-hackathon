@@ -10,6 +10,9 @@ import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { AppDashboard } from "./pages/AppDashboard";
 import { AvatarNewPage } from "./pages/AvatarNewPage";
+import { OutfitsListPage } from "./pages/OutfitsListPage";
+import { OutfitNewPage } from "./pages/OutfitNewPage";
+import { OutfitDetailPage } from "./pages/OutfitDetailPage";
 
 async function appBootstrapLoader({ request }: LoaderFunctionArgs) {
   const res = await fetch("/api/app/bootstrap", { credentials: "include" });
@@ -56,6 +59,9 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <AppDashboard /> },
       { path: "avatar/new", element: <AvatarNewPage /> },
+      { path: "outfits", element: <OutfitsListPage /> },
+      { path: "outfits/new", element: <OutfitNewPage /> },
+      { path: "outfits/:id", element: <OutfitDetailPage /> },
     ],
   },
   { path: "*", element: <Navigate to="/" replace /> },

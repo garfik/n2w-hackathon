@@ -4,6 +4,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -93,12 +94,43 @@ export const tryonResult = pgTable(
   ],
 );
 
+export const outfit = pgTable("outfit", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  avatarId: text("avatar_id")
+    .notNull()
+    .references(() => avatar.id, { onDelete: "cascade" }),
+  occasion: text("occasion").notNull(),
+  resultImageKey: text("result_image_key"),
+  scoreJson: jsonb("score_json"),
+  ...timestamps,
+});
+
+export const outfitGarment = pgTable(
+  "outfit_garment",
+  {
+    outfitId: text("outfit_id")
+      .notNull()
+      .references(() => outfit.id, { onDelete: "cascade" }),
+    garmentId: text("garment_id")
+      .notNull()
+      .references(() => garment.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.outfitId, table.garmentId] }),
+    index("outfit_garment_outfit_id_idx").on(table.outfitId),
+  ]
+);
+
 // Relations: user -> many domain entities (separate from auth userRelations)
 export const userDomainRelations = relations(user, ({ many }) => ({
   avatars: many(avatar),
   garments: many(garment),
   outfitAnalyses: many(outfitAnalysis),
   tryonResults: many(tryonResult),
+  outfits: many(outfit),
 }));
 
 export const avatarRelations = relations(avatar, ({ one }) => ({
@@ -135,4 +167,15 @@ export const tryonResultRelations = relations(tryonResult, ({ one }) => ({
     fields: [tryonResult.userId],
     references: [user.id],
   }),
+}));
+
+export const outfitRelations = relations(outfit, ({ one, many }) => ({
+  user: one(user, { fields: [outfit.userId], references: [user.id] }),
+  avatar: one(avatar, { fields: [outfit.avatarId], references: [avatar.id] }),
+  outfitGarments: many(outfitGarment),
+}));
+
+export const outfitGarmentRelations = relations(outfitGarment, ({ one }) => ({
+  outfit: one(outfit, { fields: [outfitGarment.outfitId], references: [outfit.id] }),
+  garment: one(garment, { fields: [outfitGarment.garmentId], references: [garment.id] }),
 }));
