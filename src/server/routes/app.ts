@@ -1,11 +1,11 @@
-import { router } from "./router";
-import { requireUser } from "../lib/requireUser";
-import { db } from "../../db/client";
-import { avatar } from "../../db/domain.schema";
-import { eq, count } from "drizzle-orm";
+import { router } from './router';
+import { requireUser } from '../lib/requireUser';
+import { db } from '../../db/client';
+import { avatar } from '../../db/domain.schema';
+import { eq, count } from 'drizzle-orm';
 
 export const appRoutes = router({
-  "/api/app/bootstrap": {
+  '/api/app/bootstrap': {
     async GET(req) {
       const result = await requireUser(req);
       if (!result.ok) return result.response;

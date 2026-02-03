@@ -1,8 +1,8 @@
-import { router } from "./router";
-import { requireUser } from "../lib/requireUser";
+import { router } from './router';
+import { requireUser } from '../lib/requireUser';
 
 export const meRoutes = router({
-  "/api/me": {
+  '/api/me': {
     async GET(req) {
       const result = await requireUser(req);
       if (!result.ok) return result.response;

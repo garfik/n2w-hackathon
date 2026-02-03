@@ -4,18 +4,20 @@ import {
   GetObjectCommand,
   HeadObjectCommand,
   DeleteObjectCommand,
-} from "@aws-sdk/client-s3";
+} from '@aws-sdk/client-s3';
 
 const { S3_ENDPOINT, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_BUCKET, S3_REGION } = process.env;
 if (!S3_ENDPOINT || !S3_ACCESS_KEY_ID || !S3_SECRET_ACCESS_KEY || !S3_BUCKET || !S3_REGION) {
-  throw new Error("Missing S3 env: S3_ENDPOINT, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_BUCKET, S3_REGION");
+  throw new Error(
+    'Missing S3 env: S3_ENDPOINT, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_BUCKET, S3_REGION'
+  );
 }
 
 const s3 = new S3Client({
   endpoint: S3_ENDPOINT,
   region: S3_REGION,
   credentials: { accessKeyId: S3_ACCESS_KEY_ID, secretAccessKey: S3_SECRET_ACCESS_KEY },
-  forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
+  forcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true',
 });
 
 const bucket = S3_BUCKET;
@@ -40,11 +42,7 @@ async function streamToBuffer(
   return Buffer.concat(chunks);
 }
 
-export async function putObject(
-  key: string,
-  data: Buffer,
-  contentType: string
-): Promise<void> {
+export async function putObject(key: string, data: Buffer, contentType: string): Promise<void> {
   await s3.send(
     new PutObjectCommand({
       Bucket: bucket,
@@ -56,9 +54,7 @@ export async function putObject(
 }
 
 export async function getObjectBuffer(key: string): Promise<Buffer> {
-  const out = await s3.send(
-    new GetObjectCommand({ Bucket: bucket, Key: key })
-  );
+  const out = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   return streamToBuffer(out.Body as AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>);
 }
 
@@ -67,14 +63,14 @@ export async function headObject(key: string): Promise<boolean> {
     await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
     return true;
   } catch (e: unknown) {
-    if (e && typeof e === "object" && "name" in e && e.name === "NotFound") {
+    if (e && typeof e === 'object' && 'name' in e && e.name === 'NotFound') {
       return false;
     }
     if (
       e &&
-      typeof e === "object" &&
-      "$metadata" in e &&
-      typeof (e as { $metadata?: { httpStatusCode?: number } }).$metadata === "object"
+      typeof e === 'object' &&
+      '$metadata' in e &&
+      typeof (e as { $metadata?: { httpStatusCode?: number } }).$metadata === 'object'
     ) {
       const code = (e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
       if (code === 404) return false;

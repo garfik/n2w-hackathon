@@ -1,9 +1,9 @@
-import { router } from "./router";
-import { db } from "../../db/client";
-import { sql } from "drizzle-orm";
+import { router } from './router';
+import { db } from '../../db/client';
+import { sql } from 'drizzle-orm';
 
 export const dbRoutes = router({
-  "/api/db/ping": {
+  '/api/db/ping': {
     async GET() {
       try {
         const rows = await db.execute(sql`select now() as now`);

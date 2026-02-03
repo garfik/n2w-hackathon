@@ -3,3 +3,5 @@ dist
 bun.lock
 *.min.js
 drizzle
+# auto-generated schema for auth
+src/db/auth.schema.ts

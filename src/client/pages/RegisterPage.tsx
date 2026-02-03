@@ -1,16 +1,16 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@components/ui/card";
-import { Button } from "@components/ui/button";
-import { Input } from "@components/ui/input";
-import { Label } from "@components/ui/label";
-import { useState, type FormEvent } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { authClient } from "@client/lib/authClient";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@components/ui/card';
+import { Button } from '@components/ui/button';
+import { Input } from '@components/ui/input';
+import { Label } from '@components/ui/label';
+import { useState, type FormEvent } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { authClient } from '@client/lib/authClient';
 
 export function RegisterPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -18,7 +18,7 @@ export function RegisterPage() {
     e.preventDefault();
     setError(null);
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError('Passwords do not match');
       return;
     }
     setLoading(true);
@@ -26,15 +26,15 @@ export function RegisterPage() {
       const res = await authClient.signUp.email({
         email,
         password,
-        name: email.split("@")[0] ?? "User",
+        name: email.split('@')[0] ?? 'User',
       });
       if (res.error) {
-        setError(res.error.message ?? "Registration failed");
+        setError(res.error.message ?? 'Registration failed');
         return;
       }
-      navigate("/app", { replace: true });
+      navigate('/app', { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
+      setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -90,11 +90,11 @@ export function RegisterPage() {
               </p>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Registering..." : "Register"}
+              {loading ? 'Registering...' : 'Register'}
             </Button>
           </form>
           <p className="mt-4 text-sm text-muted-foreground text-center">
-            Already have an account?{" "}
+            Already have an account?{' '}
             <Link to="/login" className="text-primary underline-offset-4 hover:underline">
               Sign in
             </Link>

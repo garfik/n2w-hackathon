@@ -1,4 +1,4 @@
-import { auth } from "../auth";
+import { auth } from '../auth';
 
 export type RequireUserResult =
   | { ok: true; userId: string; email: string }
@@ -14,15 +14,12 @@ export async function requireUser(req: Request): Promise<RequireUserResult> {
   if (!session?.user) {
     return {
       ok: false,
-      response: Response.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 }
-      ),
+      response: Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 }),
     };
   }
   return {
     ok: true,
     userId: session.user.id,
-    email: session.user.email ?? "",
+    email: session.user.email ?? '',
   };
 }

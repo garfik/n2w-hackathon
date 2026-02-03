@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations } from 'drizzle-orm';
 import {
   index,
   integer,
@@ -8,119 +8,119 @@ import {
   text,
   timestamp,
   uniqueIndex,
-} from "drizzle-orm/pg-core";
-import { user } from "./auth.schema";
+} from 'drizzle-orm/pg-core';
+import { user } from './auth.schema';
 
 const timestamps = {
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at')
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
 };
 
-export const avatar = pgTable("avatar", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
+export const avatar = pgTable('avatar', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
     .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  sourcePhotoKey: text("source_photo_key"),
-  bodyProfileJson: jsonb("body_profile_json"),
-  heightCm: integer("height_cm"),
+    .references(() => user.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  sourcePhotoKey: text('source_photo_key'),
+  bodyProfileJson: jsonb('body_profile_json'),
+  heightCm: integer('height_cm'),
   ...timestamps,
 });
 
-export const garment = pgTable("garment", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
+export const garment = pgTable('garment', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
     .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  originalImageKey: text("original_image_key").notNull(),
-  garmentProfileJson: jsonb("garment_profile_json"),
+    .references(() => user.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  originalImageKey: text('original_image_key').notNull(),
+  garmentProfileJson: jsonb('garment_profile_json'),
   ...timestamps,
 });
 
 export const outfitAnalysis = pgTable(
-  "outfit_analysis",
+  'outfit_analysis',
   {
-    id: text("id").primaryKey(),
-    userId: text("user_id")
+    id: text('id').primaryKey(),
+    userId: text('user_id')
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    avatarId: text("avatar_id")
+      .references(() => user.id, { onDelete: 'cascade' }),
+    avatarId: text('avatar_id')
       .notNull()
-      .references(() => avatar.id, { onDelete: "cascade" }),
-    garmentId: text("garment_id")
+      .references(() => avatar.id, { onDelete: 'cascade' }),
+    garmentId: text('garment_id')
       .notNull()
-      .references(() => garment.id, { onDelete: "cascade" }),
-    occasion: text("occasion").notNull(),
-    modelVersion: text("model_version").notNull().default("gemini-mvp-v1"),
-    scoreJson: jsonb("score_json").notNull(),
+      .references(() => garment.id, { onDelete: 'cascade' }),
+    occasion: text('occasion').notNull(),
+    modelVersion: text('model_version').notNull().default('gemini-mvp-v1'),
+    scoreJson: jsonb('score_json').notNull(),
     ...timestamps,
   },
   (table) => [
-    uniqueIndex("outfit_analysis_avatar_garment_occasion_version_idx").on(
+    uniqueIndex('outfit_analysis_avatar_garment_occasion_version_idx').on(
       table.avatarId,
       table.garmentId,
       table.occasion,
-      table.modelVersion,
+      table.modelVersion
     ),
-    index("outfit_analysis_user_id_idx").on(table.userId),
-  ],
+    index('outfit_analysis_user_id_idx').on(table.userId),
+  ]
 );
 
 export const tryonResult = pgTable(
-  "tryon_result",
+  'tryon_result',
   {
-    id: text("id").primaryKey(),
-    userId: text("user_id")
+    id: text('id').primaryKey(),
+    userId: text('user_id')
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    avatarPhotoKey: text("avatar_photo_key").notNull(),
-    garmentPhotoKey: text("garment_photo_key").notNull(),
-    modelVersion: text("model_version").notNull().default("gemini-mvp-v1"),
-    resultImageKey: text("result_image_key").notNull(),
+      .references(() => user.id, { onDelete: 'cascade' }),
+    avatarPhotoKey: text('avatar_photo_key').notNull(),
+    garmentPhotoKey: text('garment_photo_key').notNull(),
+    modelVersion: text('model_version').notNull().default('gemini-mvp-v1'),
+    resultImageKey: text('result_image_key').notNull(),
     ...timestamps,
   },
   (table) => [
-    uniqueIndex("tryon_result_avatar_garment_version_idx").on(
+    uniqueIndex('tryon_result_avatar_garment_version_idx').on(
       table.avatarPhotoKey,
       table.garmentPhotoKey,
-      table.modelVersion,
+      table.modelVersion
     ),
-    index("tryon_result_user_id_idx").on(table.userId),
-  ],
+    index('tryon_result_user_id_idx').on(table.userId),
+  ]
 );
 
-export const outfit = pgTable("outfit", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
+export const outfit = pgTable('outfit', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
     .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  avatarId: text("avatar_id")
+    .references(() => user.id, { onDelete: 'cascade' }),
+  avatarId: text('avatar_id')
     .notNull()
-    .references(() => avatar.id, { onDelete: "cascade" }),
-  occasion: text("occasion").notNull(),
-  resultImageKey: text("result_image_key"),
-  scoreJson: jsonb("score_json"),
+    .references(() => avatar.id, { onDelete: 'cascade' }),
+  occasion: text('occasion').notNull(),
+  resultImageKey: text('result_image_key'),
+  scoreJson: jsonb('score_json'),
   ...timestamps,
 });
 
 export const outfitGarment = pgTable(
-  "outfit_garment",
+  'outfit_garment',
   {
-    outfitId: text("outfit_id")
+    outfitId: text('outfit_id')
       .notNull()
-      .references(() => outfit.id, { onDelete: "cascade" }),
-    garmentId: text("garment_id")
+      .references(() => outfit.id, { onDelete: 'cascade' }),
+    garmentId: text('garment_id')
       .notNull()
-      .references(() => garment.id, { onDelete: "cascade" }),
+      .references(() => garment.id, { onDelete: 'cascade' }),
   },
   (table) => [
     primaryKey({ columns: [table.outfitId, table.garmentId] }),
-    index("outfit_garment_outfit_id_idx").on(table.outfitId),
+    index('outfit_garment_outfit_id_idx').on(table.outfitId),
   ]
 );
 

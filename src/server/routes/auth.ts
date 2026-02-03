@@ -1,8 +1,8 @@
-import { router } from "./router";
-import { auth } from "../auth";
+import { router } from './router';
+import { auth } from '../auth';
 
 export const authRoutes = router({
-  "/api/auth/*": {
+  '/api/auth/*': {
     GET: (req) => auth.handler(req),
     POST: (req) => auth.handler(req),
     PATCH: (req) => auth.handler(req),

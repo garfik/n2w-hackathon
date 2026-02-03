@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 export const OutfitScoreSchema = z.object({
   scores: z.object({
@@ -9,7 +9,7 @@ export const OutfitScoreSchema = z.object({
     season_material: z.number().int().min(0).max(100),
     overall: z.number().int().min(0).max(100),
   }),
-  verdict: z.enum(["great","ok","not_recommended"]),
+  verdict: z.enum(['great', 'ok', 'not_recommended']),
   why: z.array(z.string()).min(1).max(8),
   improvements: z.array(z.string()).min(1).max(8),
   alternatives: z.array(z.string()).min(0).max(6),
