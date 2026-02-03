@@ -32,26 +32,69 @@ const BODY_SHAPE_LABELS: Record<AvatarBodyProfile['body_shape_label'], string> =
   rectangle: 'Rectangle',
   apple: 'Apple',
   inverted_triangle: 'Inverted triangle',
+  unknown: 'Unknown',
 };
 const SHOULDER_WIDTH_LABELS: Record<AvatarBodyProfile['shoulder_width_class'], string> = {
   narrow: 'Narrow',
   average: 'Average',
   wide: 'Wide',
+  unknown: 'Unknown',
 };
 const HIP_VS_SHOULDER_LABELS: Record<AvatarBodyProfile['hip_vs_shoulder'], string> = {
   hips_wider: 'Hips wider',
   equal: 'Equal',
   shoulders_wider: 'Shoulders wider',
+  unknown: 'Unknown',
 };
 const WAIST_DEFINITION_LABELS: Record<AvatarBodyProfile['waist_definition'], string> = {
   defined: 'Defined',
   moderate: 'Moderate',
   low: 'Low',
+  unknown: 'Unknown',
 };
 const TORSO_VS_LEGS_LABELS: Record<AvatarBodyProfile['torso_vs_legs'], string> = {
   short_torso: 'Short torso',
   balanced: 'Balanced',
   long_torso: 'Long torso',
+  unknown: 'Unknown',
+};
+const BODY_VOLUME_LABELS: Record<AvatarBodyProfile['body_volume'], string> = {
+  slim: 'Slim',
+  average: 'Average',
+  curvy: 'Curvy',
+  plus: 'Plus',
+  unknown: 'Unknown',
+};
+const VERTICALITY_LABELS: Record<AvatarBodyProfile['verticality'], string> = {
+  petite: 'Petite',
+  regular: 'Regular',
+  tall: 'Tall',
+  unknown: 'Unknown',
+};
+const SHOULDER_SLOPE_LABELS: Record<AvatarBodyProfile['shoulder_slope'], string> = {
+  sloped: 'Sloped',
+  neutral: 'Neutral',
+  square: 'Square',
+  unknown: 'Unknown',
+};
+const NECK_LENGTH_LABELS: Record<AvatarBodyProfile['neck_length'], string> = {
+  short: 'Short',
+  average: 'Average',
+  long: 'Long',
+  unknown: 'Unknown',
+};
+const UNDERTONE_LABELS: Record<AvatarBodyProfile['undertone'], string> = {
+  cool: 'Cool',
+  neutral: 'Neutral',
+  warm: 'Warm',
+  olive: 'Olive',
+  unknown: 'Unknown',
+};
+const CONTRAST_LEVEL_LABELS: Record<AvatarBodyProfile['contrast_level'], string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  unknown: 'Unknown',
 };
 
 function confidencePercent(c: number): number {
@@ -137,12 +180,13 @@ export function AvatarNewPage() {
     if (!avatarId) return;
     setSaveLoading(true);
     try {
+      const height =
+        typeof heightCm === 'number' && Number.isFinite(heightCm) ? heightCm : undefined;
       if (formProfile) {
         await updateAvatar({
           avatarId,
           bodyProfileJson: formProfile,
-          heightCm:
-            typeof heightCm === 'number' && Number.isFinite(heightCm) ? heightCm : undefined,
+          heightCm: height,
         });
       }
       // Navigate to outfits for this avatar
@@ -340,7 +384,7 @@ export function AvatarNewPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {(['narrow', 'average', 'wide'] as const).map((opt) => (
+                        {(['narrow', 'average', 'wide', 'unknown'] as const).map((opt) => (
                           <SelectItem key={opt} value={opt}>
                             {SHOULDER_WIDTH_LABELS[opt]}
                           </SelectItem>
@@ -369,11 +413,13 @@ export function AvatarNewPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {(['hips_wider', 'equal', 'shoulders_wider'] as const).map((opt) => (
-                          <SelectItem key={opt} value={opt}>
-                            {HIP_VS_SHOULDER_LABELS[opt]}
-                          </SelectItem>
-                        ))}
+                        {(['hips_wider', 'equal', 'shoulders_wider', 'unknown'] as const).map(
+                          (opt) => (
+                            <SelectItem key={opt} value={opt}>
+                              {HIP_VS_SHOULDER_LABELS[opt]}
+                            </SelectItem>
+                          )
+                        )}
                       </SelectContent>
                     </Select>
                     <Badge variant="secondary">
@@ -398,7 +444,7 @@ export function AvatarNewPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {(['defined', 'moderate', 'low'] as const).map((opt) => (
+                        {(['defined', 'moderate', 'low', 'unknown'] as const).map((opt) => (
                           <SelectItem key={opt} value={opt}>
                             {WAIST_DEFINITION_LABELS[opt]}
                           </SelectItem>
@@ -424,11 +470,13 @@ export function AvatarNewPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {(['short_torso', 'balanced', 'long_torso'] as const).map((opt) => (
-                          <SelectItem key={opt} value={opt}>
-                            {TORSO_VS_LEGS_LABELS[opt]}
-                          </SelectItem>
-                        ))}
+                        {(['short_torso', 'balanced', 'long_torso', 'unknown'] as const).map(
+                          (opt) => (
+                            <SelectItem key={opt} value={opt}>
+                              {TORSO_VS_LEGS_LABELS[opt]}
+                            </SelectItem>
+                          )
+                        )}
                       </SelectContent>
                     </Select>
                     <Badge variant="secondary">
@@ -454,7 +502,14 @@ export function AvatarNewPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {(
-                          ['hourglass', 'pear', 'rectangle', 'apple', 'inverted_triangle'] as const
+                          [
+                            'hourglass',
+                            'pear',
+                            'rectangle',
+                            'apple',
+                            'inverted_triangle',
+                            'unknown',
+                          ] as const
                         ).map((opt) => (
                           <SelectItem key={opt} value={opt}>
                             {BODY_SHAPE_LABELS[opt]}
@@ -464,6 +519,162 @@ export function AvatarNewPage() {
                     </Select>
                     <Badge variant="secondary">
                       {confidencePercent(formProfile.confidence.body_shape_label)}%
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Body volume</Label>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={formProfile.body_volume}
+                      onValueChange={(v) =>
+                        updateFormField('body_volume', v as AvatarBodyProfile['body_volume'])
+                      }
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(['slim', 'average', 'curvy', 'plus', 'unknown'] as const).map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {BODY_VOLUME_LABELS[opt]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Badge variant="secondary">
+                      {confidencePercent(formProfile.confidence.body_volume)}%
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Verticality</Label>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={formProfile.verticality}
+                      onValueChange={(v) =>
+                        updateFormField('verticality', v as AvatarBodyProfile['verticality'])
+                      }
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(['petite', 'regular', 'tall', 'unknown'] as const).map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {VERTICALITY_LABELS[opt]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Badge variant="secondary">
+                      {confidencePercent(formProfile.confidence.verticality)}%
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Shoulder slope</Label>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={formProfile.shoulder_slope}
+                      onValueChange={(v) =>
+                        updateFormField('shoulder_slope', v as AvatarBodyProfile['shoulder_slope'])
+                      }
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(['sloped', 'neutral', 'square', 'unknown'] as const).map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {SHOULDER_SLOPE_LABELS[opt]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Badge variant="secondary">
+                      {confidencePercent(formProfile.confidence.shoulder_slope)}%
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Neck length</Label>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={formProfile.neck_length}
+                      onValueChange={(v) =>
+                        updateFormField('neck_length', v as AvatarBodyProfile['neck_length'])
+                      }
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(['short', 'average', 'long', 'unknown'] as const).map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {NECK_LENGTH_LABELS[opt]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Badge variant="secondary">
+                      {confidencePercent(formProfile.confidence.neck_length)}%
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Undertone</Label>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={formProfile.undertone}
+                      onValueChange={(v) =>
+                        updateFormField('undertone', v as AvatarBodyProfile['undertone'])
+                      }
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(['cool', 'neutral', 'warm', 'olive', 'unknown'] as const).map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {UNDERTONE_LABELS[opt]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Badge variant="secondary">
+                      {confidencePercent(formProfile.confidence.undertone)}%
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Contrast level</Label>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={formProfile.contrast_level}
+                      onValueChange={(v) =>
+                        updateFormField('contrast_level', v as AvatarBodyProfile['contrast_level'])
+                      }
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(['low', 'medium', 'high', 'unknown'] as const).map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {CONTRAST_LEVEL_LABELS[opt]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Badge variant="secondary">
+                      {confidencePercent(formProfile.confidence.contrast_level)}%
                     </Badge>
                   </div>
                 </div>
@@ -480,7 +691,7 @@ export function AvatarNewPage() {
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="height-cm">Рост (см)</Label>
+                  <Label htmlFor="height-cm">Height (cm)</Label>
                   <Input
                     id="height-cm"
                     type="number"

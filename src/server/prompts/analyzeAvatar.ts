@@ -4,13 +4,14 @@ import { generateJson, type ImageInput } from '@server/lib/gemini';
 const PROMPT = `You are a strict computer vision + fashion/styling analyst.
 
 TASK:
-Analyze the provided image of a person. Classify body proportions and shape using fashion/styling categories (not measurements).
+Analyze the provided image of a person. Classify body proportions, shape, and color-related signals using fashion/styling categories (not measurements).
 You MUST follow the output rules below. This is an API task.
 
 INPUT QUALITY REQUIREMENTS (hard rules):
 1) The image must contain EXACTLY ONE person (one body). If you detect multiple people or multiple visible faces, return an error.
 2) The person must be visible in a FULL-BODY or near full-body view (head-to-toe preferred; at minimum shoulders-to-feet with clear torso/legs proportions). If only the face/upper torso is visible, return an error.
 3) If the pose, clothing, angle, or occlusions make proportions ambiguous, you may still answer BUT you MUST:
+   - use "unknown" for affected enum fields
    - lower confidence values accordingly
    - add clear issues strings describing the ambiguity
 
@@ -28,17 +29,29 @@ A) SUCCESS - when analysis is possible:
 {
   "success": true,
   "data": {
-    "shoulder_width_class": "narrow" | "average" | "wide",
-    "hip_vs_shoulder": "hips_wider" | "equal" | "shoulders_wider",
-    "waist_definition": "defined" | "moderate" | "low",
-    "torso_vs_legs": "short_torso" | "balanced" | "long_torso",
-    "body_shape_label": "hourglass" | "pear" | "rectangle" | "apple" | "inverted_triangle",
+    "shoulder_width_class": "narrow" | "average" | "wide" | "unknown",
+    "hip_vs_shoulder": "hips_wider" | "equal" | "shoulders_wider" | "unknown",
+    "waist_definition": "defined" | "moderate" | "low" | "unknown",
+    "torso_vs_legs": "short_torso" | "balanced" | "long_torso" | "unknown",
+    "body_shape_label": "hourglass" | "pear" | "rectangle" | "apple" | "inverted_triangle" | "unknown",
+    "body_volume": "slim" | "average" | "curvy" | "plus" | "unknown",
+    "verticality": "petite" | "regular" | "tall" | "unknown",
+    "shoulder_slope": "sloped" | "neutral" | "square" | "unknown",
+    "neck_length": "short" | "average" | "long" | "unknown",
+    "undertone": "cool" | "neutral" | "warm" | "olive" | "unknown",
+    "contrast_level": "low" | "medium" | "high" | "unknown",
     "confidence": {
       "shoulder_width_class": number (0..1),
       "hip_vs_shoulder": number (0..1),
       "waist_definition": number (0..1),
       "torso_vs_legs": number (0..1),
-      "body_shape_label": number (0..1)
+      "body_shape_label": number (0..1),
+      "body_volume": number (0..1),
+      "verticality": number (0..1),
+      "shoulder_slope": number (0..1),
+      "neck_length": number (0..1),
+      "undertone": number (0..1),
+      "contrast_level": number (0..1)
     },
     "issues": string[]
   }
@@ -65,10 +78,17 @@ DECISION GUIDANCE (how to choose labels):
   - inverted_triangle: shoulders wider than hips
   - rectangle: shoulders ≈ hips, low waist definition
   - apple: fuller midsection / low waist definition, shoulders often not narrower than hips
+  - unknown: if unclear or not applicable.
+- body_volume: visual body volume for fit/drape (slim/average/curvy/plus). If clothing hides contours, use "unknown".
+- verticality: styling shorthand for perceived height/length (petite/regular/tall). Use "unknown" if no reference.
+- shoulder_slope: sloped vs neutral vs square shoulder line (affects structured vs soft garments).
+- neck_length: short/average/long (affects necklines).
+- undertone: cool/neutral/warm/olive for color harmony; use "unknown" if lighting is unreliable.
+- contrast_level: low/medium/high (face–hair–skin contrast for pattern and palette choices).
 
 CONFIDENCE RULES:
 - If clothing is loose/oversized, or pose is angled, or camera perspective is extreme → reduce confidence and add issues.
-- If any key attribute is uncertain, do NOT invent certainty; lower confidence (e.g. 0.4–0.6) and explain via issues.
+- If any key attribute is uncertain, use "unknown" for that field, lower confidence (e.g. 0.4–0.6), and explain via issues.
 
 ERROR CODES (when to return error):
 - MULTIPLE_PEOPLE: more than one person in frame.
@@ -78,6 +98,8 @@ ERROR CODES (when to return error):
 - LOW_QUALITY: image too blurry/dark to assess.
 
 Now analyze the image and respond with JSON only.`;
+
+// TODO: Add height cm to the prompt as `User claimed height is X cm`.
 
 /**
  * Analyzes avatar image(s) and returns body profile or error.
