@@ -5,6 +5,24 @@ import {
   type AvatarBodyProfile,
 } from '@shared/ai-schemas/avatar';
 
+// --- Clean body profile schema (for storage and editing, without AI metadata) ---
+
+/**
+ * AvatarBodyProfileCleanSchema
+ *
+ * Same fields as AvatarBodyProfileSchema but without:
+ * - confidence (AI metadata, not user-editable)
+ * - issues (AI warnings, not stored after user edits)
+ *
+ * This is what gets stored in the avatar table and what users can edit.
+ */
+export const AvatarBodyProfileCleanSchema = AvatarBodyProfileSchema.omit({
+  confidence: true,
+  issues: true,
+});
+
+export type AvatarBodyProfileClean = z.output<typeof AvatarBodyProfileCleanSchema>;
+
 // --- Avatar entity (as returned by API) ---
 
 export const AvatarDtoSchema = z.object({
@@ -88,11 +106,12 @@ export type CreateAvatarParams = { file: File; name: string };
 
 export const UpdateAvatarBodySchema = z.object({
   name: z.string().min(1).optional(),
-  bodyProfileJson: AvatarBodyProfileSchema.optional(),
+  bodyProfileJson: AvatarBodyProfileCleanSchema.optional(),
   heightCm: z.number().min(0).optional(),
 });
 
 export type UpdateAvatarBody = z.input<typeof UpdateAvatarBodySchema>;
 
-// Re-export for consumers that need the body profile type (e.g. PATCH body)
+// Re-export AvatarBodyProfile from ai-schemas for consumers
+// (AvatarBodyProfileClean is already exported above)
 export type { AvatarBodyProfile };

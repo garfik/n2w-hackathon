@@ -1,9 +1,10 @@
 import { eq, and, desc } from 'drizzle-orm';
+import { createHash } from 'crypto';
 import { z } from 'zod';
 import { router } from './router';
 import { requireUser } from '../lib/requireUser';
 import { db } from '../../db/client';
-import { avatar, outfit } from '../../db/domain.schema';
+import { avatar, avatarAnalysis, outfit } from '../../db/domain.schema';
 import { putObject, getObjectBuffer, deleteObject } from '../lib/storage';
 import { analyzeAvatar as analyzeAvatarLib } from '../prompts/analyzeAvatar';
 import { AvatarAnalysisResultSchema } from '@shared/ai-schemas/avatar';
@@ -17,6 +18,8 @@ import {
   AnalyzeAvatarErrorDtoSchema,
   UpdateAvatarBodySchema,
 } from '@shared/dtos/avatar';
+
+const AVATAR_ANALYSIS_MODEL_VERSION = 'gemini-avatar-v1';
 
 /** Parse payload with schema; on validation failure return 422 instead of 500. */
 function parseResponseDto<T>(
@@ -119,19 +122,53 @@ export const avatarsRoutes = router({
         return Response.json({ error: 'Avatar not found' }, { status: 404 });
       }
 
-      if (row.bodyProfileJson != null) {
-        return Response.json({ ok: false, error: 'Avatar already analyzed' }, { status: 409 });
-      }
-
       const sourceKey = row.sourcePhotoKey;
       if (!sourceKey) {
         return Response.json({ error: 'Avatar has no source photo' }, { status: 400 });
       }
 
+      // Get photo and compute hash for caching
       const buffer = await getObjectBuffer(sourceKey);
-      const base64 = buffer.toString('base64');
+      const photoHash = createHash('sha256').update(buffer).digest('hex');
       const mimeType = mimeFromKey(sourceKey);
 
+      // Check for cached analysis with same photo hash and model version
+      const [cachedAnalysis] = await db
+        .select()
+        .from(avatarAnalysis)
+        .where(
+          and(
+            eq(avatarAnalysis.photoHash, photoHash),
+            eq(avatarAnalysis.modelVersion, AVATAR_ANALYSIS_MODEL_VERSION)
+          )
+        );
+
+      if (cachedAnalysis) {
+        // Return cached result
+        const cached = cachedAnalysis.responseJson as {
+          success: boolean;
+          data?: unknown;
+          error?: unknown;
+        };
+        if (cached.success === false) {
+          const dtoResult = parseResponseDto(AnalyzeAvatarErrorDtoSchema, {
+            ok: false as const,
+            error: (cached as { error: { code: string; message: string; issues: string[] } }).error,
+          });
+          if (!dtoResult.ok) return dtoResult.response;
+          return Response.json(dtoResult.data, { status: 422 });
+        }
+
+        const dtoResult = parseResponseDto(AnalyzeAvatarSuccessDtoSchema, {
+          ok: true as const,
+          data: (cached as { data: unknown }).data,
+        });
+        if (!dtoResult.ok) return dtoResult.response;
+        return Response.json(dtoResult.data);
+      }
+
+      // No cache - run analysis
+      const base64 = buffer.toString('base64');
       const raw = await analyzeAvatarLib([{ base64, mimeType }]);
       const analysisResult = AvatarAnalysisResultSchema.safeParse(raw);
       if (!analysisResult.success) {
@@ -139,6 +176,16 @@ export const avatarsRoutes = router({
       }
 
       const analysis = analysisResult.data;
+
+      // Save analysis result to avatar_analysis table
+      await db.insert(avatarAnalysis).values({
+        id: crypto.randomUUID(),
+        userId: result.userId,
+        avatarId: id,
+        photoHash,
+        modelVersion: AVATAR_ANALYSIS_MODEL_VERSION,
+        responseJson: analysis as unknown as Record<string, unknown>,
+      });
 
       if (analysis.success === false) {
         const dtoResult = parseResponseDto(AnalyzeAvatarErrorDtoSchema, {
@@ -154,11 +201,6 @@ export const avatarsRoutes = router({
       }
 
       const bodyProfile = analysis.data;
-      await db
-        .update(avatar)
-        .set({ bodyProfileJson: bodyProfile as unknown as Record<string, unknown> })
-        .where(eq(avatar.id, id));
-
       const dtoResult = parseResponseDto(AnalyzeAvatarSuccessDtoSchema, {
         ok: true as const,
         data: bodyProfile,

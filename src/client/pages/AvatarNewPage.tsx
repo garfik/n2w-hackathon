@@ -22,7 +22,14 @@ import {
   updateAvatar,
   type AnalyzeErrorResponse,
 } from '@client/lib/n2wApi';
-import type { AvatarBodyProfile } from '@shared/dtos/avatar';
+import type { AvatarBodyProfile, AvatarBodyProfileClean } from '@shared/dtos/avatar';
+
+/** Strip AI metadata (confidence, issues) from body profile before saving */
+function toCleanProfile(profile: AvatarBodyProfile): AvatarBodyProfileClean {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { confidence, issues, ...clean } = profile;
+  return clean;
+}
 
 type AnalysisStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -183,9 +190,10 @@ export function AvatarNewPage() {
       const height =
         typeof heightCm === 'number' && Number.isFinite(heightCm) ? heightCm : undefined;
       if (formProfile) {
+        // Strip confidence and issues before saving - only store clean data
         await updateAvatar({
           avatarId,
-          bodyProfileJson: formProfile,
+          bodyProfileJson: toCleanProfile(formProfile),
           heightCm: height,
         });
       }

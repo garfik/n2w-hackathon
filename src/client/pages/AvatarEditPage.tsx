@@ -14,7 +14,14 @@ import {
   SelectValue,
 } from '@components/ui/select';
 import { getAvatar, updateAvatar, type Avatar } from '@client/lib/n2wApi';
-import type { AvatarBodyProfile } from '@shared/dtos/avatar';
+import type { AvatarBodyProfile, AvatarBodyProfileClean } from '@shared/dtos/avatar';
+
+/** Strip AI metadata (confidence, issues) from body profile before saving */
+function toCleanProfile(profile: AvatarBodyProfile): AvatarBodyProfileClean {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { confidence, issues, ...clean } = profile;
+  return clean;
+}
 
 const BODY_SHAPE_LABELS: Record<AvatarBodyProfile['body_shape_label'], string> = {
   hourglass: 'Hourglass',
@@ -87,8 +94,16 @@ const CONTRAST_LEVEL_LABELS: Record<AvatarBodyProfile['contrast_level'], string>
   unknown: 'Unknown',
 };
 
-function confidencePercent(c: number): number {
+function confidencePercent(c: number | undefined): number | null {
+  if (c === undefined) return null;
   return Math.round(c * 100);
+}
+
+/** Helper to check if profile has confidence data (full AI response vs clean saved data) */
+function hasConfidence(
+  profile: AvatarBodyProfile
+): profile is AvatarBodyProfile & { confidence: NonNullable<AvatarBodyProfile['confidence']> } {
+  return 'confidence' in profile && profile.confidence != null;
 }
 
 function getAvatarImageUrl(sourcePhotoKey: string | null): string | null {
@@ -151,10 +166,11 @@ export function AvatarEditPage() {
     try {
       const height =
         typeof heightCm === 'number' && Number.isFinite(heightCm) ? heightCm : undefined;
+      // Strip confidence and issues before saving - only store clean data
       await updateAvatar({
         avatarId,
         name: avatarName.trim() || undefined,
-        bodyProfileJson: formProfile ?? undefined,
+        bodyProfileJson: formProfile ? toCleanProfile(formProfile) : undefined,
         heightCm: height,
       });
       navigate(`/app/avatars/${avatarId}/outfits`);
@@ -305,9 +321,11 @@ export function AvatarEditPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Badge variant="secondary">
-                      {confidencePercent(formProfile.confidence.shoulder_width_class)}%
-                    </Badge>
+                    {hasConfidence(formProfile) && (
+                      <Badge variant="secondary">
+                        {confidencePercent(formProfile.confidence.shoulder_width_class)}%
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -336,9 +354,11 @@ export function AvatarEditPage() {
                         )}
                       </SelectContent>
                     </Select>
-                    <Badge variant="secondary">
-                      {confidencePercent(formProfile.confidence.hip_vs_shoulder)}%
-                    </Badge>
+                    {hasConfidence(formProfile) && (
+                      <Badge variant="secondary">
+                        {confidencePercent(formProfile.confidence.hip_vs_shoulder)}%
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -365,9 +385,11 @@ export function AvatarEditPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Badge variant="secondary">
-                      {confidencePercent(formProfile.confidence.waist_definition)}%
-                    </Badge>
+                    {hasConfidence(formProfile) && (
+                      <Badge variant="secondary">
+                        {confidencePercent(formProfile.confidence.waist_definition)}%
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -393,9 +415,11 @@ export function AvatarEditPage() {
                         )}
                       </SelectContent>
                     </Select>
-                    <Badge variant="secondary">
-                      {confidencePercent(formProfile.confidence.torso_vs_legs)}%
-                    </Badge>
+                    {hasConfidence(formProfile) && (
+                      <Badge variant="secondary">
+                        {confidencePercent(formProfile.confidence.torso_vs_legs)}%
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -431,9 +455,11 @@ export function AvatarEditPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Badge variant="secondary">
-                      {confidencePercent(formProfile.confidence.body_shape_label)}%
-                    </Badge>
+                    {hasConfidence(formProfile) && (
+                      <Badge variant="secondary">
+                        {confidencePercent(formProfile.confidence.body_shape_label)}%
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -457,9 +483,11 @@ export function AvatarEditPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Badge variant="secondary">
-                      {confidencePercent(formProfile.confidence.body_volume)}%
-                    </Badge>
+                    {hasConfidence(formProfile) && (
+                      <Badge variant="secondary">
+                        {confidencePercent(formProfile.confidence.body_volume)}%
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -483,9 +511,11 @@ export function AvatarEditPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Badge variant="secondary">
-                      {confidencePercent(formProfile.confidence.verticality)}%
-                    </Badge>
+                    {hasConfidence(formProfile) && (
+                      <Badge variant="secondary">
+                        {confidencePercent(formProfile.confidence.verticality)}%
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -509,9 +539,11 @@ export function AvatarEditPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Badge variant="secondary">
-                      {confidencePercent(formProfile.confidence.shoulder_slope)}%
-                    </Badge>
+                    {hasConfidence(formProfile) && (
+                      <Badge variant="secondary">
+                        {confidencePercent(formProfile.confidence.shoulder_slope)}%
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -535,9 +567,11 @@ export function AvatarEditPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Badge variant="secondary">
-                      {confidencePercent(formProfile.confidence.neck_length)}%
-                    </Badge>
+                    {hasConfidence(formProfile) && (
+                      <Badge variant="secondary">
+                        {confidencePercent(formProfile.confidence.neck_length)}%
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -561,9 +595,11 @@ export function AvatarEditPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Badge variant="secondary">
-                      {confidencePercent(formProfile.confidence.undertone)}%
-                    </Badge>
+                    {hasConfidence(formProfile) && (
+                      <Badge variant="secondary">
+                        {confidencePercent(formProfile.confidence.undertone)}%
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -587,13 +623,15 @@ export function AvatarEditPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Badge variant="secondary">
-                      {confidencePercent(formProfile.confidence.contrast_level)}%
-                    </Badge>
+                    {hasConfidence(formProfile) && (
+                      <Badge variant="secondary">
+                        {confidencePercent(formProfile.confidence.contrast_level)}%
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
-                {formProfile.issues.length > 0 && (
+                {'issues' in formProfile && formProfile.issues && formProfile.issues.length > 0 && (
                   <div className="space-y-2">
                     <Label>Issues (read-only)</Label>
                     <ul className="text-sm text-muted-foreground list-disc list-inside rounded-md border p-3 bg-muted/30">

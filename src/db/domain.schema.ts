@@ -31,6 +31,32 @@ export const avatar = pgTable('avatar', {
   ...timestamps,
 });
 
+export const avatarAnalysis = pgTable(
+  'avatar_analysis',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    avatarId: text('avatar_id')
+      .notNull()
+      .references(() => avatar.id, { onDelete: 'cascade' }),
+    photoHash: text('photo_hash').notNull(),
+    modelVersion: text('model_version').notNull().default('gemini-avatar-v1'),
+    responseJson: jsonb('response_json').notNull(),
+    promptTokens: integer('prompt_tokens'),
+    completionTokens: integer('completion_tokens'),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('avatar_analysis_photo_hash_model_version_idx').on(
+      table.photoHash,
+      table.modelVersion
+    ),
+    index('avatar_analysis_avatar_id_idx').on(table.avatarId),
+  ]
+);
+
 export const garment = pgTable('garment', {
   id: text('id').primaryKey(),
   userId: text('user_id')
@@ -127,16 +153,29 @@ export const outfitGarment = pgTable(
 // Relations: user -> many domain entities (separate from auth userRelations)
 export const userDomainRelations = relations(user, ({ many }) => ({
   avatars: many(avatar),
+  avatarAnalyses: many(avatarAnalysis),
   garments: many(garment),
   outfitAnalyses: many(outfitAnalysis),
   tryonResults: many(tryonResult),
   outfits: many(outfit),
 }));
 
-export const avatarRelations = relations(avatar, ({ one }) => ({
+export const avatarRelations = relations(avatar, ({ one, many }) => ({
   user: one(user, {
     fields: [avatar.userId],
     references: [user.id],
+  }),
+  analyses: many(avatarAnalysis),
+}));
+
+export const avatarAnalysisRelations = relations(avatarAnalysis, ({ one }) => ({
+  user: one(user, {
+    fields: [avatarAnalysis.userId],
+    references: [user.id],
+  }),
+  avatar: one(avatar, {
+    fields: [avatarAnalysis.avatarId],
+    references: [avatar.id],
   }),
 }));
 
