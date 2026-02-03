@@ -10,8 +10,7 @@ type RouteValueFor<Path extends string> =
   | Partial<
       Record<
         Bun.Serve.HTTPMethod,
-        | ((req: Bun.BunRequest<Path>) => Response | Promise<Response>)
-        | Response
+        ((req: Bun.BunRequest<Path>) => Response | Promise<Response>) | Response
       >
     >;
 

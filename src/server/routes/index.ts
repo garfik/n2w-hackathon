@@ -1,14 +1,13 @@
-import index from "../../client/index.html";
-import { authRoutes } from "./auth";
-import { meRoutes } from "./me";
-import { appRoutes } from "./app";
-import { avatarsRoutes } from "./avatars";
-import { garmentsRoutes } from "./garments";
-import { outfitsRoutes } from "./outfits";
-import { dbRoutes } from "./db";
-import { helloRoutes } from "./hello";
-import { storageRoutes } from "./storage";
-import { geminiRoutes } from "./gemini";
+import index from '../../client/index.html';
+import { authRoutes } from './auth';
+import { meRoutes } from './me';
+import { appRoutes } from './app';
+import { avatarsRoutes } from './avatars';
+import { garmentsRoutes } from './garments';
+import { outfitsRoutes } from './outfits';
+import { dbRoutes } from './db';
+import { storageRoutes } from './storage';
+import { geminiRoutes } from './gemini';
 
 export function getRoutes() {
   return {
@@ -19,9 +18,8 @@ export function getRoutes() {
     ...garmentsRoutes,
     ...outfitsRoutes,
     ...dbRoutes,
-    ...helloRoutes,
     ...storageRoutes,
     ...geminiRoutes,
-    "/*": index,
+    '/*': index,
   };
 }

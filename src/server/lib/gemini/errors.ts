@@ -1,5 +1,5 @@
 /**
- * Gemini API / parsing errors with codes for API responses.
+ * Gemini API errors with codes for API responses.
  */
 
 export class GeminiClientError extends Error {
@@ -9,13 +9,16 @@ export class GeminiClientError extends Error {
     public readonly status?: number
   ) {
     super(message);
-    this.name = "GeminiClientError";
+    this.name = 'GeminiClientError';
   }
 }
 
 export class GeminiParseError extends Error {
-  constructor(message: string, public readonly code = "GEMINI_PARSE_ERROR") {
+  constructor(
+    message: string,
+    public readonly code = 'GEMINI_PARSE_ERROR'
+  ) {
     super(message);
-    this.name = "GeminiParseError";
+    this.name = 'GeminiParseError';
   }
 }
