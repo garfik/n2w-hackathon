@@ -7,11 +7,11 @@ services:
       POSTGRES_USER: n2w
       POSTGRES_PASSWORD: n2w
     ports:
-      - "7003:5432"
+      - '7003:5432'
     volumes:
       - n2w_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U n2w -d n2w"]
+      test: ['CMD-SHELL', 'pg_isready -U n2w -d n2w']
       interval: 2s
       timeout: 2s
       retries: 20
@@ -24,12 +24,12 @@ services:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: miniosecret
     ports:
-      - "7002:9000"
-      - "7004:9001"
+      - '7002:9000'
+      - '7004:9001'
     volumes:
       - n2w_minio:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
       interval: 2s
       timeout: 2s
       retries: 20
@@ -47,7 +47,7 @@ services:
       mc anonymous set none local/n2w || true;
       echo 'MinIO bucket ready';
       "
-    restart: "no"
+    restart: 'no'
 
   adminer:
     image: adminer

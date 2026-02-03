@@ -25,9 +25,10 @@ Keep in mind, that everything that starts with `BUN_PUBLIC_` can be used and vis
 4. Start dev server: `bun run dev`
 
 This should spin up few services:
-* website with api - http://localhost:7001
-* s3 browser (minio) - http://localhost:7004
-* postgresql browser - http://localhost:7005
+
+- website with api - http://localhost:7001
+- s3 browser (minio) - http://localhost:7004
+- postgresql browser - http://localhost:7005
 
 ## Scripts
 
