@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+/**
+ * AI (Gemini) output schema: garment profile from image analysis.
+ */
 export const GarmentProfileSchema = z.object({
   category: z.enum([
     'dress',

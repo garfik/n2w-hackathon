@@ -1,11 +1,38 @@
 import { eq, and, desc } from 'drizzle-orm';
+import { z } from 'zod';
 import { router } from './router';
 import { requireUser } from '../lib/requireUser';
 import { db } from '../../db/client';
 import { avatar, outfit } from '../../db/domain.schema';
 import { putObject, getObjectBuffer, deleteObject } from '../lib/storage';
 import { analyzeAvatar as analyzeAvatarLib } from '../prompts/analyzeAvatar';
-import { AvatarAnalysisResultSchema } from '@shared/schemas/avatar';
+import { AvatarAnalysisResultSchema } from '@shared/ai-schemas/avatar';
+import {
+  ListAvatarsResponseDtoSchema,
+  GetAvatarResponseDtoSchema,
+  CreateAvatarResponseDtoSchema,
+  UpdateAvatarResponseDtoSchema,
+  DeleteAvatarResponseDtoSchema,
+  AnalyzeAvatarSuccessDtoSchema,
+  AnalyzeAvatarErrorDtoSchema,
+  UpdateAvatarBodySchema,
+} from '@shared/dtos/avatar';
+
+/** Parse payload with schema; on validation failure return 422 instead of 500. */
+function parseResponseDto<T>(
+  schema: z.ZodType<T>,
+  data: unknown
+): { ok: true; data: T } | { ok: false; response: Response } {
+  const result = schema.safeParse(data);
+  if (result.success) return { ok: true, data: result.data };
+  return {
+    ok: false,
+    response: Response.json(
+      { error: 'Validation error', issues: result.error.flatten() },
+      { status: 422 }
+    ),
+  };
+}
 
 function mimeFromKey(key: string): string {
   const ext = key.split('.').pop()?.toLowerCase() ?? '';
@@ -26,7 +53,12 @@ export const avatarsRoutes = router({
         .where(eq(avatar.userId, result.userId))
         .orderBy(desc(avatar.createdAt));
 
-      return Response.json({ ok: true, avatars: rows });
+      const dtoResult = parseResponseDto(ListAvatarsResponseDtoSchema, {
+        ok: true as const,
+        avatars: rows,
+      });
+      if (!dtoResult.ok) return dtoResult.response;
+      return Response.json(dtoResult.data);
     },
 
     async POST(req) {
@@ -59,7 +91,12 @@ export const avatarsRoutes = router({
         sourcePhotoKey: key,
       });
 
-      return Response.json({ ok: true, id });
+      const dtoResult = parseResponseDto(CreateAvatarResponseDtoSchema, {
+        ok: true as const,
+        id,
+      });
+      if (!dtoResult.ok) return dtoResult.response;
+      return Response.json(dtoResult.data);
     },
   },
 
@@ -96,25 +133,24 @@ export const avatarsRoutes = router({
       const mimeType = mimeFromKey(sourceKey);
 
       const raw = await analyzeAvatarLib([{ base64, mimeType }]);
-      const parsed = AvatarAnalysisResultSchema.safeParse(raw);
-      if (!parsed.success) {
+      const analysisResult = AvatarAnalysisResultSchema.safeParse(raw);
+      if (!analysisResult.success) {
         return Response.json({ ok: false, error: 'Invalid analysis response' }, { status: 502 });
       }
 
-      const analysis = parsed.data;
+      const analysis = analysisResult.data;
 
       if (analysis.success === false) {
-        return Response.json(
-          {
-            ok: false,
-            error: {
-              code: analysis.error.code,
-              message: analysis.error.message,
-              issues: analysis.error.issues,
-            },
+        const dtoResult = parseResponseDto(AnalyzeAvatarErrorDtoSchema, {
+          ok: false as const,
+          error: {
+            code: analysis.error.code,
+            message: analysis.error.message,
+            issues: analysis.error.issues,
           },
-          { status: 422 }
-        );
+        });
+        if (!dtoResult.ok) return dtoResult.response;
+        return Response.json(dtoResult.data, { status: 422 });
       }
 
       const bodyProfile = analysis.data;
@@ -123,7 +159,12 @@ export const avatarsRoutes = router({
         .set({ bodyProfileJson: bodyProfile as unknown as Record<string, unknown> })
         .where(eq(avatar.id, id));
 
-      return Response.json({ ok: true, data: bodyProfile });
+      const dtoResult = parseResponseDto(AnalyzeAvatarSuccessDtoSchema, {
+        ok: true as const,
+        data: bodyProfile,
+      });
+      if (!dtoResult.ok) return dtoResult.response;
+      return Response.json(dtoResult.data);
     },
   },
 
@@ -146,7 +187,12 @@ export const avatarsRoutes = router({
         return Response.json({ error: 'Avatar not found' }, { status: 404 });
       }
 
-      return Response.json({ ok: true, avatar: row });
+      const dtoResult = parseResponseDto(GetAvatarResponseDtoSchema, {
+        ok: true as const,
+        avatar: row,
+      });
+      if (!dtoResult.ok) return dtoResult.response;
+      return Response.json(dtoResult.data);
     },
 
     async PATCH(req) {
@@ -158,16 +204,21 @@ export const avatarsRoutes = router({
         return Response.json({ error: 'Missing avatar id' }, { status: 400 });
       }
 
-      let body: { name?: string; bodyProfileJson?: unknown; heightCm?: number };
+      let rawBody: unknown;
       try {
-        body = (await req.json()) as {
-          name?: string;
-          bodyProfileJson?: unknown;
-          heightCm?: number;
-        };
+        rawBody = await req.json();
       } catch {
         return Response.json({ error: 'Invalid JSON' }, { status: 400 });
       }
+
+      const bodyParse = UpdateAvatarBodySchema.safeParse(rawBody);
+      if (!bodyParse.success) {
+        return Response.json(
+          { error: 'Invalid body', issues: bodyParse.error.flatten() },
+          { status: 400 }
+        );
+      }
+      const body = bodyParse.data;
 
       const [row] = await db
         .select()
@@ -179,23 +230,26 @@ export const avatarsRoutes = router({
       }
 
       const updates: { name?: string; bodyProfileJson?: unknown; heightCm?: number } = {};
-      if (typeof body.name === 'string' && body.name.trim()) {
-        updates.name = body.name.trim();
-      }
-      if (body.bodyProfileJson !== undefined) {
-        updates.bodyProfileJson = body.bodyProfileJson;
-      }
-      if (typeof body.heightCm === 'number' && body.heightCm >= 0) {
-        updates.heightCm = Math.round(body.heightCm);
-      }
+      if (body.name !== undefined) updates.name = body.name;
+      if (body.bodyProfileJson !== undefined) updates.bodyProfileJson = body.bodyProfileJson;
+      if (body.heightCm !== undefined) updates.heightCm = body.heightCm;
 
       if (Object.keys(updates).length === 0) {
-        return Response.json({ ok: true, avatar: row });
+        const dtoResult = parseResponseDto(UpdateAvatarResponseDtoSchema, {
+          ok: true as const,
+          avatar: row,
+        });
+        if (!dtoResult.ok) return dtoResult.response;
+        return Response.json(dtoResult.data);
       }
 
       const [updated] = await db.update(avatar).set(updates).where(eq(avatar.id, id)).returning();
-
-      return Response.json({ ok: true, avatar: updated ?? row });
+      const dtoResult = parseResponseDto(UpdateAvatarResponseDtoSchema, {
+        ok: true as const,
+        avatar: updated ?? row,
+      });
+      if (!dtoResult.ok) return dtoResult.response;
+      return Response.json(dtoResult.data);
     },
 
     async DELETE(req) {
@@ -234,10 +288,12 @@ export const avatarsRoutes = router({
       // Delete avatar (cascades to outfits via FK)
       await db.delete(avatar).where(eq(avatar.id, id));
 
-      return Response.json({
-        ok: true,
+      const dtoResult = parseResponseDto(DeleteAvatarResponseDtoSchema, {
+        ok: true as const,
         deletedOutfitsCount: outfitCount?.count ?? 0,
       });
+      if (!dtoResult.ok) return dtoResult.response;
+      return Response.json(dtoResult.data);
     },
   },
 });

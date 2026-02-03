@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@components/ui/select';
 import { getAvatar, updateAvatar, type Avatar } from '@client/lib/n2wApi';
-import type { AvatarBodyProfile } from '@shared/schemas/avatar';
+import type { AvatarBodyProfile } from '@shared/dtos/avatar';
 
 const BODY_SHAPE_LABELS: Record<AvatarBodyProfile['body_shape_label'], string> = {
   hourglass: 'Hourglass',

@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+/**
+ * AI (Gemini) output schema: outfit score from analysis.
+ */
 export const OutfitScoreSchema = z.object({
   scores: z.object({
     fit_balance: z.number().int().min(0).max(100),

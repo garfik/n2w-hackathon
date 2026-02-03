@@ -1,4 +1,4 @@
-import { AvatarAnalysisResultSchema, type AvatarAnalysisResult } from '@shared/schemas/avatar';
+import { AvatarAnalysisResultSchema, type AvatarAnalysisResult } from '@shared/ai-schemas/avatar';
 import { generateJson, type ImageInput } from '@server/lib/gemini';
 
 const PROMPT = `You are a strict computer vision + fashion/styling analyst.

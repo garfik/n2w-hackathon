@@ -22,7 +22,7 @@ import {
   updateAvatar,
   type AnalyzeErrorResponse,
 } from '@client/lib/n2wApi';
-import type { AvatarBodyProfile } from '@shared/schemas/avatar';
+import type { AvatarBodyProfile } from '@shared/dtos/avatar';
 
 type AnalysisStatus = 'idle' | 'loading' | 'success' | 'error';
 

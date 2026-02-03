@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+/**
+ * AI (Gemini) output schema: body profile from avatar analysis.
+ * Used to validate LLM response; same shape is exposed in API via DTOs.
+ */
 export const AvatarBodyProfileSchema = z.object({
   shoulder_width_class: z.enum(['narrow', 'average', 'wide']),
   hip_vs_shoulder: z.enum(['hips_wider', 'equal', 'shoulders_wider']),
