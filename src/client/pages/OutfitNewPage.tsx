@@ -1,27 +1,28 @@
-import { useCallback, useState, type FormEvent } from "react";
-import { useDropzone } from "react-dropzone";
-import { useNavigate } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@components/ui/card";
-import { Button } from "@components/ui/button";
-import { Label } from "@components/ui/label";
+import { useCallback, useState, type FormEvent } from 'react';
+import { useDropzone } from 'react-dropzone';
+import { useNavigate, useParams, Link } from 'react-router-dom';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@components/ui/card';
+import { Button } from '@components/ui/button';
+import { Label } from '@components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@components/ui/select";
-import { Progress } from "@components/ui/progress";
-import { X } from "lucide-react";
+} from '@components/ui/select';
+import { Progress } from '@components/ui/progress';
+import { X } from 'lucide-react';
 
 type GarmentEntry = { id: string; thumbnailUrl: string; name: string };
 
-const OCCASIONS = ["casual", "work", "party", "date", "sport", "formal", "other"];
+const OCCASIONS = ['casual', 'work', 'party', 'date', 'sport', 'formal', 'other'];
 
 export function OutfitNewPage() {
   const navigate = useNavigate();
+  const { avatarId } = useParams<{ avatarId: string }>();
   const [garments, setGarments] = useState<GarmentEntry[]>([]);
-  const [occasion, setOccasion] = useState<string>("");
+  const [occasion, setOccasion] = useState<string>('');
   const [uploading, setUploading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,24 +33,28 @@ export function OutfitNewPage() {
       setUploading(true);
       try {
         const formData = new FormData();
-        formData.append("file", file);
-        formData.append("name", file.name.replace(/\.[^.]+$/, "") || "Garment");
-        const res = await fetch("/api/garments", {
-          method: "POST",
-          credentials: "include",
+        formData.append('file', file);
+        formData.append('name', file.name.replace(/\.[^.]+$/, '') || 'Garment');
+        const res = await fetch('/api/garments', {
+          method: 'POST',
+          credentials: 'include',
           body: formData,
         });
         if (!res.ok) {
           const data = (await res.json()) as { error?: string };
-          throw new Error(data.error ?? "Upload failed");
+          throw new Error(data.error ?? 'Upload failed');
         }
         const data = (await res.json()) as { ok: boolean; id: string; thumbnailUrl: string };
         setGarments((prev) => [
           ...prev,
-          { id: data.id, thumbnailUrl: data.thumbnailUrl, name: file.name.replace(/\.[^.]+$/, "") || "Garment" },
+          {
+            id: data.id,
+            thumbnailUrl: data.thumbnailUrl,
+            name: file.name.replace(/\.[^.]+$/, '') || 'Garment',
+          },
         ]);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Upload failed");
+        setError(err instanceof Error ? err.message : 'Upload failed');
         break;
       } finally {
         setUploading(false);
@@ -59,7 +64,7 @@ export function OutfitNewPage() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { "image/*": [".png", ".jpg", ".jpeg", ".webp"] },
+    accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp'] },
     disabled: uploading,
   });
 
@@ -70,30 +75,38 @@ export function OutfitNewPage() {
   const handleCreateOutfit = async (e: FormEvent) => {
     e.preventDefault();
     if (garments.length === 0) {
-      setError("Add at least one garment");
+      setError('Add at least one garment');
       return;
     }
     if (!occasion) {
-      setError("Select an occasion");
+      setError('Select an occasion');
+      return;
+    }
+    if (!avatarId) {
+      setError('No avatar selected');
       return;
     }
     setError(null);
     setCreating(true);
     try {
-      const res = await fetch("/api/outfits", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ garmentIds: garments.map((g) => g.id), occasion }),
+      const res = await fetch('/api/outfits', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          garmentIds: garments.map((g) => g.id),
+          occasion,
+          avatarId,
+        }),
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        throw new Error(data.error ?? "Create failed");
+        throw new Error(data.error ?? 'Create failed');
       }
       const data = (await res.json()) as { ok: boolean; id: string };
-      navigate(`/app/outfits/${data.id}`, { replace: true });
+      navigate(`/app/avatars/${avatarId}/outfits/${data.id}`, { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Create failed");
+      setError(err instanceof Error ? err.message : 'Create failed');
     } finally {
       setCreating(false);
     }
@@ -101,6 +114,11 @@ export function OutfitNewPage() {
 
   return (
     <div className="max-w-2xl space-y-6">
+      <div>
+        <Button variant="ghost" size="sm" asChild>
+          <Link to={`/app/avatars/${avatarId}/outfits`}>&larr; Back to outfits</Link>
+        </Button>
+      </div>
       <Card>
         <CardHeader className="gap-2">
           <CardTitle className="text-xl font-bold">New outfit</CardTitle>
@@ -114,12 +132,14 @@ export function OutfitNewPage() {
             <div
               {...getRootProps()}
               className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-                isDragActive ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
+                isDragActive
+                  ? 'border-primary bg-primary/5'
+                  : 'border-muted-foreground/25 hover:border-primary/50'
               }`}
             >
               <input {...getInputProps()} />
               <p className="text-muted-foreground">
-                {isDragActive ? "Drop images here" : "Drag & drop garment images, or click to add"}
+                {isDragActive ? 'Drop images here' : 'Drag & drop garment images, or click to add'}
               </p>
             </div>
             {uploading && <Progress value={undefined} className="mt-2 h-2" />}
@@ -127,11 +147,7 @@ export function OutfitNewPage() {
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {garments.map((g) => (
                   <div key={g.id} className="relative rounded-lg border overflow-hidden group">
-                    <img
-                      src={g.thumbnailUrl}
-                      alt={g.name}
-                      className="h-24 w-full object-cover"
-                    />
+                    <img src={g.thumbnailUrl} alt={g.name} className="h-24 w-full object-cover" />
                     <p className="truncate px-2 py-1 text-xs text-muted-foreground">{g.name}</p>
                     <Button
                       type="button"
@@ -172,11 +188,8 @@ export function OutfitNewPage() {
                 {error}
               </p>
             )}
-            <Button
-              type="submit"
-              disabled={garments.length === 0 || !occasion || creating}
-            >
-              {creating ? "Creating…" : "Create outfit"}
+            <Button type="submit" disabled={garments.length === 0 || !occasion || creating}>
+              {creating ? 'Creating…' : 'Create outfit'}
             </Button>
           </form>
         </CardContent>

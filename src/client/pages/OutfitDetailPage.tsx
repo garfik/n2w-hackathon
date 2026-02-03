@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@components/ui/card";
-import { Badge } from "@components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@components/ui/tabs";
-import { Skeleton } from "@components/ui/skeleton";
-import { Button } from "@components/ui/button";
+import { useEffect, useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@components/ui/card';
+import { Badge } from '@components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@components/ui/tabs';
+import { Skeleton } from '@components/ui/skeleton';
+import { Button } from '@components/ui/button';
 
 type Garment = { id: string; name: string; thumbnailUrl: string | null };
 type OutfitDetail = {
@@ -16,30 +16,30 @@ type OutfitDetail = {
 };
 
 export function OutfitDetailPage() {
-  const { id } = useParams<"id">();
+  const { avatarId, outfitId } = useParams<{ avatarId: string; outfitId: string }>();
   const [outfit, setOutfit] = useState<OutfitDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id) return;
+    if (!outfitId) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/outfits/${id}`, { credentials: "include" });
+        const res = await fetch(`/api/outfits/${outfitId}`, { credentials: 'include' });
         if (!res.ok) {
-          if (res.status === 404) throw new Error("Outfit not found");
-          throw new Error("Failed to load outfit");
+          if (res.status === 404) throw new Error('Outfit not found');
+          throw new Error('Failed to load outfit');
         }
         const data = (await res.json()) as { ok: boolean; outfit?: OutfitDetail };
         if (!cancelled && data.outfit) setOutfit(data.outfit);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load");
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load');
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [outfitId]);
 
   if (error) {
     return (
@@ -48,7 +48,7 @@ export function OutfitDetailPage() {
           <CardContent className="pt-6">
             <p className="text-destructive mb-4">{error}</p>
             <Button asChild variant="outline">
-              <Link to="/app/outfits">Back to outfits</Link>
+              <Link to={`/app/avatars/${avatarId}/outfits`}>Back to outfits</Link>
             </Button>
           </CardContent>
         </Card>
@@ -74,7 +74,7 @@ export function OutfitDetailPage() {
   }
 
   const scoreBreakdown =
-    outfit.scoreJson && typeof outfit.scoreJson === "object" && !Array.isArray(outfit.scoreJson)
+    outfit.scoreJson && typeof outfit.scoreJson === 'object' && !Array.isArray(outfit.scoreJson)
       ? (outfit.scoreJson as Record<string, unknown>)
       : null;
 
@@ -83,7 +83,7 @@ export function OutfitDetailPage() {
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">{outfit.occasion}</h1>
         <Button asChild variant="outline" size="sm">
-          <Link to="/app/outfits">Back to outfits</Link>
+          <Link to={`/app/avatars/${avatarId}/outfits`}>Back to outfits</Link>
         </Button>
       </div>
 
@@ -123,11 +123,7 @@ export function OutfitDetailPage() {
                 {outfit.garments.map((g) => (
                   <div key={g.id} className="rounded-lg border overflow-hidden">
                     {g.thumbnailUrl ? (
-                      <img
-                        src={g.thumbnailUrl}
-                        alt={g.name}
-                        className="h-32 w-full object-cover"
-                      />
+                      <img src={g.thumbnailUrl} alt={g.name} className="h-32 w-full object-cover" />
                     ) : (
                       <div className="h-32 w-full bg-muted flex items-center justify-center text-muted-foreground text-sm">
                         No image
@@ -150,10 +146,13 @@ export function OutfitDetailPage() {
               {scoreBreakdown && Object.keys(scoreBreakdown).length > 0 ? (
                 <div className="space-y-2">
                   {Object.entries(scoreBreakdown).map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between gap-4 rounded-md border px-3 py-2">
+                    <div
+                      key={key}
+                      className="flex items-center justify-between gap-4 rounded-md border px-3 py-2"
+                    >
                       <span className="text-sm font-medium">{key}</span>
                       <Badge variant="secondary">
-                        {typeof value === "number" ? value.toFixed(2) : String(value)}
+                        {typeof value === 'number' ? value.toFixed(2) : String(value)}
                       </Badge>
                     </div>
                   ))}

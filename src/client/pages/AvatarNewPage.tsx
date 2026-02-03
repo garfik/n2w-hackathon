@@ -1,108 +1,508 @@
-import { useCallback, useState, type FormEvent } from "react";
-import { useDropzone } from "react-dropzone";
-import { useNavigate } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@components/ui/card";
-import { Button } from "@components/ui/button";
-import { Progress } from "@components/ui/progress";
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useDropzone } from 'react-dropzone';
+import { useNavigate, Link } from 'react-router-dom';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@components/ui/card';
+import { Button } from '@components/ui/button';
+import { Input } from '@components/ui/input';
+import { Label } from '@components/ui/label';
+import { Alert, AlertDescription, AlertTitle } from '@components/ui/alert';
+import { Skeleton } from '@components/ui/skeleton';
+import { Badge } from '@components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@components/ui/select';
+import { Progress } from '@components/ui/progress';
+import {
+  createAvatar,
+  analyzeAvatar,
+  updateAvatar,
+  type AnalyzeErrorResponse,
+} from '@client/lib/n2wApi';
+import type { AvatarBodyProfile } from '@shared/schemas/avatar';
+
+type AnalysisStatus = 'idle' | 'loading' | 'success' | 'error';
+
+const BODY_SHAPE_LABELS: Record<AvatarBodyProfile['body_shape_label'], string> = {
+  hourglass: 'Hourglass',
+  pear: 'Pear',
+  rectangle: 'Rectangle',
+  apple: 'Apple',
+  inverted_triangle: 'Inverted triangle',
+};
+const SHOULDER_WIDTH_LABELS: Record<AvatarBodyProfile['shoulder_width_class'], string> = {
+  narrow: 'Narrow',
+  average: 'Average',
+  wide: 'Wide',
+};
+const HIP_VS_SHOULDER_LABELS: Record<AvatarBodyProfile['hip_vs_shoulder'], string> = {
+  hips_wider: 'Hips wider',
+  equal: 'Equal',
+  shoulders_wider: 'Shoulders wider',
+};
+const WAIST_DEFINITION_LABELS: Record<AvatarBodyProfile['waist_definition'], string> = {
+  defined: 'Defined',
+  moderate: 'Moderate',
+  low: 'Low',
+};
+const TORSO_VS_LEGS_LABELS: Record<AvatarBodyProfile['torso_vs_legs'], string> = {
+  short_torso: 'Short torso',
+  balanced: 'Balanced',
+  long_torso: 'Long torso',
+};
+
+function confidencePercent(c: number): number {
+  return Math.round(c * 100);
+}
 
 export function AvatarNewPage() {
   const navigate = useNavigate();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [avatarName, setAvatarName] = useState('');
+  const [avatarId, setAvatarId] = useState<string | null>(null);
+  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('idle');
+  const [formProfile, setFormProfile] = useState<AvatarBodyProfile | null>(null);
+  const [analysisError, setAnalysisError] = useState<AnalyzeErrorResponse['error'] | null>(null);
+  const [heightCm, setHeightCm] = useState<number | ''>('');
+  const [createLoading, setCreateLoading] = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    setError(null);
     const f = acceptedFiles[0];
     if (!f) return;
+    setCreateError(null);
     setFile(f);
-    const url = URL.createObjectURL(f);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
+    setPreview(URL.createObjectURL(f));
+    setAvatarName(f.name.replace(/\.[^.]+$/, '') || 'Avatar');
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { "image/*": [".png", ".jpg", ".jpeg", ".webp"] },
+    accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp'] },
     maxFiles: 1,
-    disabled: loading,
+    disabled: createLoading || !!avatarId,
   });
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleCreateAvatar = async (e: FormEvent) => {
     e.preventDefault();
-    if (!file) {
-      setError("Select an image first");
-      return;
-    }
-    setError(null);
-    setLoading(true);
+    if (!file) return;
+    setCreateError(null);
+    setCreateLoading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("name", file.name.replace(/\.[^.]+$/, "") || "Avatar");
-      const res = await fetch("/api/avatars", {
-        method: "POST",
-        credentials: "include",
-        body: formData,
+      const { id } = await createAvatar({
+        file,
+        name: avatarName.trim() || file.name.replace(/\.[^.]+$/, '') || 'Avatar',
       });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error ?? "Upload failed");
-      }
-      navigate("/app", { replace: true });
+      setAvatarId(id);
+      setAnalysisStatus('loading');
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setCreateError(err instanceof Error ? err.message : 'Create failed');
     } finally {
-      setLoading(false);
+      setCreateLoading(false);
     }
   };
 
+  useEffect(() => {
+    if (!avatarId || analysisStatus !== 'loading') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await analyzeAvatar({ avatarId });
+        if (cancelled) return;
+        if (result.ok === true) {
+          setFormProfile(result.data);
+          setAnalysisStatus('success');
+        } else {
+          setAnalysisError(result.error);
+          setAnalysisStatus('error');
+        }
+      } catch {
+        if (!cancelled) {
+          setAnalysisError({ code: 'LOW_QUALITY', message: 'Analysis failed', issues: [] });
+          setAnalysisStatus('error');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [avatarId, analysisStatus]);
+
+  const handleSaveContinue = async () => {
+    if (!avatarId) return;
+    setSaveLoading(true);
+    try {
+      if (formProfile) {
+        await updateAvatar({
+          avatarId,
+          bodyProfileJson: formProfile,
+          heightCm:
+            typeof heightCm === 'number' && Number.isFinite(heightCm) ? heightCm : undefined,
+        });
+      }
+      // Navigate to outfits for this avatar
+      navigate(`/app/avatars/${avatarId}/outfits`, { replace: true });
+    } catch {
+      setSaveLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
+
+  const handleUploadAnother = () => {
+    if (preview) URL.revokeObjectURL(preview);
+    setFile(null);
+    setPreview(null);
+    setAvatarName('');
+    setAvatarId(null);
+    setAnalysisStatus('idle');
+    setFormProfile(null);
+    setAnalysisError(null);
+    setHeightCm('');
+    setCreateError(null);
+  };
+
+  const updateFormField = <K extends keyof AvatarBodyProfile>(
+    key: K,
+    value: AvatarBodyProfile[K]
+  ) => {
+    setFormProfile((prev) => (prev ? { ...prev, [key]: value } : null));
+  };
+
+  const showStep1 = !avatarId && !file;
+  const showStep2 = file && !avatarId;
+  const showAnalyzing = avatarId && analysisStatus === 'loading';
+  const showError = avatarId && analysisStatus === 'error';
+  const showForm = avatarId && analysisStatus === 'success' && formProfile;
+
   return (
-    <div className="max-w-2xl">
-      <Card>
-        <CardHeader className="gap-2">
-          <CardTitle className="text-xl font-bold">New avatar</CardTitle>
-          <CardDescription>
-            Upload a photo of yourself for virtual try-on. One image, front-facing works best.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div
-              {...getRootProps()}
-              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-                isDragActive ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
-              }`}
-            >
-              <input {...getInputProps()} />
-              {preview ? (
-                <div className="space-y-2">
-                  <img
-                    src={preview}
-                    alt="Preview"
-                    className="mx-auto max-h-48 rounded-lg object-contain"
-                  />
-                  <p className="text-sm text-muted-foreground">{file?.name}</p>
-                </div>
-              ) : (
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-4">
+        <Button variant="ghost" size="sm" asChild>
+          <Link to="/app/avatars">&larr; Back to avatars</Link>
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Left: preview */}
+        <Card>
+          <CardHeader className="gap-2">
+            <CardTitle className="text-xl font-bold">Avatar photo</CardTitle>
+            <CardDescription>
+              Upload a full-body photo. One image; front-facing works best.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {preview ? (
+              <div className="space-y-2">
+                <img
+                  src={preview}
+                  alt="Avatar preview"
+                  className="w-full max-h-80 rounded-lg object-contain bg-muted/50"
+                />
+                {file && <p className="text-sm text-muted-foreground truncate">{file.name}</p>}
+              </div>
+            ) : (
+              <div
+                {...getRootProps()}
+                className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                  isDragActive
+                    ? 'border-primary bg-primary/5'
+                    : 'border-muted-foreground/25 hover:border-primary/50'
+                }`}
+              >
+                <input {...getInputProps()} />
                 <p className="text-muted-foreground">
-                  {isDragActive ? "Drop the image here" : "Drag & drop an image, or click to select"}
+                  {isDragActive
+                    ? 'Drop the image here'
+                    : 'Drag & drop an image, or click to select'}
                 </p>
-              )}
-            </div>
-            {loading && <Progress value={undefined} className="h-2" />}
-            {error && (
-              <p className="text-sm text-destructive" role="alert">
-                {error}
-              </p>
+              </div>
             )}
-            <Button type="submit" disabled={!file || loading}>
-              {loading ? "Uploading…" : "Create avatar"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        {/* Right: name / analyzing / form / error */}
+        <div className="space-y-4">
+          {showStep1 && (
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Select a photo to continue.</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {showStep2 && (
+            <Card>
+              <CardHeader className="gap-2">
+                <CardTitle className="text-xl font-bold">Avatar name</CardTitle>
+                <CardDescription>Give your avatar a display name.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleCreateAvatar} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="avatar-name">Name</Label>
+                    <Input
+                      id="avatar-name"
+                      value={avatarName}
+                      onChange={(e) => setAvatarName(e.target.value)}
+                      placeholder="My avatar"
+                      required
+                      disabled={createLoading}
+                    />
+                  </div>
+                  {createLoading && <Progress value={undefined} className="h-2" />}
+                  {createError && (
+                    <p className="text-sm text-destructive" role="alert">
+                      {createError}
+                    </p>
+                  )}
+                  <Button type="submit" disabled={createLoading}>
+                    {createLoading ? 'Creating…' : 'Continue'}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          )}
+
+          {showAnalyzing && (
+            <Card>
+              <CardHeader className="gap-2">
+                <CardTitle className="text-xl font-bold">Analyzing avatar</CardTitle>
+                <CardDescription>Analyzing avatar…</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Progress value={undefined} className="h-2" />
+                <div className="space-y-2">
+                  <Skeleton className="h-9 w-full" />
+                  <Skeleton className="h-9 w-full" />
+                  <Skeleton className="h-9 w-full" />
+                  <Skeleton className="h-9 w-full" />
+                  <Skeleton className="h-9 w-full" />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {showError && analysisError && (
+            <Alert variant="destructive">
+              <AlertTitle>Analysis failed</AlertTitle>
+              <AlertDescription>
+                <p className="mb-2">{analysisError.message}</p>
+                <p className="text-sm mb-2">
+                  Please upload another full-body photo (one person, clear view).
+                </p>
+                {analysisError.issues.length > 0 && (
+                  <ul className="list-disc list-inside text-sm mb-2">
+                    {analysisError.issues.map((issue, i) => (
+                      <li key={i}>{issue}</li>
+                    ))}
+                  </ul>
+                )}
+                <Button variant="outline" size="sm" onClick={handleUploadAnother} className="mt-2">
+                  Upload another photo
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {showForm && formProfile && (
+            <Card>
+              <CardHeader className="gap-2">
+                <CardTitle className="text-xl font-bold">Body profile</CardTitle>
+                <CardDescription>
+                  Review and edit the analysis. Then save to continue.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Shoulder width</Label>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={formProfile.shoulder_width_class}
+                      onValueChange={(v) =>
+                        updateFormField(
+                          'shoulder_width_class',
+                          v as AvatarBodyProfile['shoulder_width_class']
+                        )
+                      }
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(['narrow', 'average', 'wide'] as const).map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {SHOULDER_WIDTH_LABELS[opt]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Badge variant="secondary">
+                      {confidencePercent(formProfile.confidence.shoulder_width_class)}%
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Hip vs shoulder</Label>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={formProfile.hip_vs_shoulder}
+                      onValueChange={(v) =>
+                        updateFormField(
+                          'hip_vs_shoulder',
+                          v as AvatarBodyProfile['hip_vs_shoulder']
+                        )
+                      }
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(['hips_wider', 'equal', 'shoulders_wider'] as const).map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {HIP_VS_SHOULDER_LABELS[opt]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Badge variant="secondary">
+                      {confidencePercent(formProfile.confidence.hip_vs_shoulder)}%
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Waist definition</Label>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={formProfile.waist_definition}
+                      onValueChange={(v) =>
+                        updateFormField(
+                          'waist_definition',
+                          v as AvatarBodyProfile['waist_definition']
+                        )
+                      }
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(['defined', 'moderate', 'low'] as const).map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {WAIST_DEFINITION_LABELS[opt]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Badge variant="secondary">
+                      {confidencePercent(formProfile.confidence.waist_definition)}%
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Torso vs legs</Label>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={formProfile.torso_vs_legs}
+                      onValueChange={(v) =>
+                        updateFormField('torso_vs_legs', v as AvatarBodyProfile['torso_vs_legs'])
+                      }
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(['short_torso', 'balanced', 'long_torso'] as const).map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {TORSO_VS_LEGS_LABELS[opt]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Badge variant="secondary">
+                      {confidencePercent(formProfile.confidence.torso_vs_legs)}%
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Body shape</Label>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={formProfile.body_shape_label}
+                      onValueChange={(v) =>
+                        updateFormField(
+                          'body_shape_label',
+                          v as AvatarBodyProfile['body_shape_label']
+                        )
+                      }
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(
+                          ['hourglass', 'pear', 'rectangle', 'apple', 'inverted_triangle'] as const
+                        ).map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {BODY_SHAPE_LABELS[opt]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Badge variant="secondary">
+                      {confidencePercent(formProfile.confidence.body_shape_label)}%
+                    </Badge>
+                  </div>
+                </div>
+
+                {formProfile.issues.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Issues (read-only)</Label>
+                    <ul className="text-sm text-muted-foreground list-disc list-inside rounded-md border p-3 bg-muted/30">
+                      {formProfile.issues.map((issue, i) => (
+                        <li key={i}>{issue}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="height-cm">Рост (см)</Label>
+                  <Input
+                    id="height-cm"
+                    type="number"
+                    min={0}
+                    max={250}
+                    placeholder="170"
+                    value={heightCm === '' ? '' : heightCm}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setHeightCm(v === '' ? '' : parseInt(v, 10));
+                    }}
+                  />
+                </div>
+
+                <Button onClick={handleSaveContinue} disabled={saveLoading} className="w-full">
+                  {saveLoading ? 'Saving…' : 'Save & Continue'}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

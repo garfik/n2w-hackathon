@@ -1,15 +1,15 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@components/ui/card";
-import { Button } from "@components/ui/button";
-import { Input } from "@components/ui/input";
-import { Label } from "@components/ui/label";
-import { useRef, useState, type FormEvent } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { authClient } from "@client/lib/authClient";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@components/ui/card';
+import { Button } from '@components/ui/button';
+import { Input } from '@components/ui/input';
+import { Label } from '@components/ui/label';
+import { useState, type FormEvent } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { authClient } from '@client/lib/authClient';
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -20,12 +20,12 @@ export function LoginPage() {
     try {
       const res = await authClient.signIn.email({ email, password });
       if (res.error) {
-        setError(res.error.message ?? "Sign in failed");
+        setError(res.error.message ?? 'Sign in failed');
         return;
       }
-      navigate("/app", { replace: true });
+      navigate('/app', { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign in failed");
+      setError(err instanceof Error ? err.message : 'Sign in failed');
     } finally {
       setLoading(false);
     }
@@ -69,11 +69,11 @@ export function LoginPage() {
               </p>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in…" : "Sign in"}
+              {loading ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
           <p className="mt-4 text-sm text-muted-foreground text-center">
-            Don't have an account?{" "}
+            Don&apos;t have an account?{' '}
             <Link to="/register" className="text-primary underline-offset-4 hover:underline">
               Register
             </Link>

@@ -1,13 +1,13 @@
-import { Outlet, Link, useNavigate } from "react-router-dom";
-import { Button } from "@components/ui/button";
-import { authClient } from "@client/lib/authClient";
+import { Outlet, Link, useNavigate } from 'react-router-dom';
+import { Button } from '@components/ui/button';
+import { authClient } from '@client/lib/authClient';
 
 export function AppLayout() {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
     await authClient.signOut();
-    navigate("/", { replace: true });
+    navigate('/', { replace: true });
   };
 
   return (
@@ -18,11 +18,8 @@ export function AppLayout() {
             <Link to="/app" className="font-medium text-foreground hover:text-primary">
               Nothing 2 Wear
             </Link>
-            <Link to="/app/avatar/new" className="text-sm text-muted-foreground hover:text-foreground">
-              Avatar
-            </Link>
-            <Link to="/app/outfits" className="text-sm text-muted-foreground hover:text-foreground">
-              Outfits
+            <Link to="/app/avatars" className="text-sm text-muted-foreground hover:text-foreground">
+              Avatars
             </Link>
           </div>
           <Button variant="outline" size="sm" onClick={handleLogout}>
