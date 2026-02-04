@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { useDropzone } from 'react-dropzone';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@components/ui/card';
 import { Button } from '@components/ui/button';
@@ -23,6 +22,7 @@ import {
   type AnalyzeErrorResponse,
 } from '@client/lib/n2wApi';
 import type { AvatarBodyProfile, AvatarBodyProfileClean } from '@shared/dtos/avatar';
+import { ImageUploadCard, type UploadResult } from '@client/components/ImageUploadCard';
 
 /** Strip AI metadata (confidence, issues) from body profile before saving */
 function toCleanProfile(profile: AvatarBodyProfile): AvatarBodyProfileClean {
@@ -110,8 +110,7 @@ function confidencePercent(c: number): number {
 
 export function AvatarNewPage() {
   const navigate = useNavigate();
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [avatarName, setAvatarName] = useState('');
   const [avatarId, setAvatarId] = useState<string | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('idle');
@@ -121,38 +120,26 @@ export function AvatarNewPage() {
   const [createLoading, setCreateLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const f = acceptedFiles[0];
-    if (!f) return;
-    setCreateError(null);
-    setFile(f);
-    setPreview(URL.createObjectURL(f));
-    setAvatarName(f.name.replace(/\.[^.]+$/, '') || 'Avatar');
-  }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp'] },
-    maxFiles: 1,
-    disabled: createLoading || !!avatarId,
-  });
+  const createSubmittingRef = useRef(false);
 
   const handleCreateAvatar = async (e: FormEvent) => {
     e.preventDefault();
-    if (!file) return;
+    if (!uploadResult) return;
+    if (createSubmittingRef.current) return;
+    createSubmittingRef.current = true;
     setCreateError(null);
     setCreateLoading(true);
     try {
       const { id } = await createAvatar({
-        file,
-        name: avatarName.trim() || file.name.replace(/\.[^.]+$/, '') || 'Avatar',
+        uploadId: uploadResult.id,
+        name: avatarName.trim() || 'Avatar',
       });
       setAvatarId(id);
       setAnalysisStatus('loading');
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Create failed');
     } finally {
+      createSubmittingRef.current = false;
       setCreateLoading(false);
     }
   };
@@ -204,16 +191,9 @@ export function AvatarNewPage() {
     }
   };
 
-  useEffect(() => {
-    return () => {
-      if (preview) URL.revokeObjectURL(preview);
-    };
-  }, [preview]);
-
   const handleUploadAnother = () => {
-    if (preview) URL.revokeObjectURL(preview);
-    setFile(null);
-    setPreview(null);
+    createSubmittingRef.current = false;
+    setUploadResult(null);
     setAvatarName('');
     setAvatarId(null);
     setAnalysisStatus('idle');
@@ -230,8 +210,8 @@ export function AvatarNewPage() {
     setFormProfile((prev) => (prev ? { ...prev, [key]: value } : null));
   };
 
-  const showStep1 = !avatarId && !file;
-  const showStep2 = file && !avatarId;
+  const showStep1 = !avatarId && !uploadResult;
+  const showStep2 = uploadResult && !avatarId;
   const showAnalyzing = avatarId && analysisStatus === 'loading';
   const showError = avatarId && analysisStatus === 'error';
   const showForm = avatarId && analysisStatus === 'success' && formProfile;
@@ -254,32 +234,12 @@ export function AvatarNewPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {preview ? (
-              <div className="space-y-2">
-                <img
-                  src={preview}
-                  alt="Avatar preview"
-                  className="w-full max-h-80 rounded-lg object-contain bg-muted/50"
-                />
-                {file && <p className="text-sm text-muted-foreground truncate">{file.name}</p>}
-              </div>
-            ) : (
-              <div
-                {...getRootProps()}
-                className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-                  isDragActive
-                    ? 'border-primary bg-primary/5'
-                    : 'border-muted-foreground/25 hover:border-primary/50'
-                }`}
-              >
-                <input {...getInputProps()} />
-                <p className="text-muted-foreground">
-                  {isDragActive
-                    ? 'Drop the image here'
-                    : 'Drag & drop an image, or click to select'}
-                </p>
-              </div>
-            )}
+            <ImageUploadCard
+              existingUpload={uploadResult ?? undefined}
+              onUploaded={setUploadResult}
+              onClear={() => setUploadResult(null)}
+              disabled={!!avatarId}
+            />
           </CardContent>
         </Card>
 
@@ -360,7 +320,13 @@ export function AvatarNewPage() {
                     ))}
                   </ul>
                 )}
-                <Button variant="outline" size="sm" onClick={handleUploadAnother} className="mt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUploadAnother}
+                  className="mt-2"
+                >
                   Upload another photo
                 </Button>
               </AlertDescription>
@@ -714,7 +680,12 @@ export function AvatarNewPage() {
                   />
                 </div>
 
-                <Button onClick={handleSaveContinue} disabled={saveLoading} className="w-full">
+                <Button
+                  type="button"
+                  onClick={handleSaveContinue}
+                  disabled={saveLoading}
+                  className="w-full"
+                >
                   {saveLoading ? 'Saving…' : 'Save & Continue'}
                 </Button>
               </CardContent>

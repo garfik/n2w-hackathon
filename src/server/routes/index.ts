@@ -8,6 +8,7 @@ import { outfitsRoutes } from './outfits';
 import { dbRoutes } from './db';
 import { storageRoutes } from './storage';
 import { geminiRoutes } from './gemini';
+import { uploadsRoutes } from './uploads';
 
 export function getRoutes() {
   return {
@@ -20,6 +21,7 @@ export function getRoutes() {
     ...dbRoutes,
     ...storageRoutes,
     ...geminiRoutes,
+    ...uploadsRoutes,
     '/*': index,
   };
 }

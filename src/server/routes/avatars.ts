@@ -4,9 +4,10 @@ import { z } from 'zod';
 import { router } from './router';
 import { requireUser } from '../lib/requireUser';
 import { db } from '../../db/client';
-import { avatar, avatarAnalysis, outfit } from '../../db/domain.schema';
-import { putObject, getObjectBuffer, deleteObject } from '../lib/storage';
-import { analyzeAvatar as analyzeAvatarLib } from '../prompts/analyzeAvatar';
+import { avatar, avatarAnalysis, outfit, upload } from '../../db/domain.schema';
+import { getObjectBuffer } from '../lib/storage';
+import { logger } from '../lib/logger';
+import { analyzeAvatar as analyzeAvatarLib, AVATAR_ANALYSIS_MODEL } from '../prompts/analyzeAvatar';
 import { AvatarAnalysisResultSchema } from '@shared/ai-schemas/avatar';
 import {
   ListAvatarsResponseDtoSchema,
@@ -16,10 +17,9 @@ import {
   DeleteAvatarResponseDtoSchema,
   AnalyzeAvatarSuccessDtoSchema,
   AnalyzeAvatarErrorDtoSchema,
+  CreateAvatarBodySchema,
   UpdateAvatarBodySchema,
 } from '@shared/dtos/avatar';
-
-const AVATAR_ANALYSIS_MODEL_VERSION = 'gemini-avatar-v1';
 
 /** Parse payload with schema; on validation failure return 422 instead of 500. */
 function parseResponseDto<T>(
@@ -35,13 +35,6 @@ function parseResponseDto<T>(
       { status: 422 }
     ),
   };
-}
-
-function mimeFromKey(key: string): string {
-  const ext = key.split('.').pop()?.toLowerCase() ?? '';
-  if (ext === 'png') return 'image/png';
-  if (ext === 'webp') return 'image/webp';
-  return 'image/jpeg';
 }
 
 export const avatarsRoutes = router({
@@ -69,29 +62,48 @@ export const avatarsRoutes = router({
       if (!result.ok) return result.response;
 
       const contentType = req.headers.get('content-type') ?? '';
-      if (!contentType.includes('multipart/form-data')) {
-        return Response.json({ error: 'Expected multipart/form-data' }, { status: 400 });
+      if (!contentType.includes('application/json')) {
+        return Response.json(
+          { error: 'Expected application/json with name, uploadId, and optional heightCm' },
+          { status: 400 }
+        );
       }
 
-      const formData = await req.formData();
-      const file = formData.get('file') ?? formData.get('image');
-      if (!file || !(file instanceof File)) {
-        return Response.json({ error: 'Missing file or image' }, { status: 400 });
+      let rawBody: unknown;
+      try {
+        rawBody = await req.json();
+      } catch {
+        return Response.json({ error: 'Invalid JSON' }, { status: 400 });
       }
 
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
+      const bodyParse = CreateAvatarBodySchema.safeParse(rawBody);
+      if (!bodyParse.success) {
+        return Response.json(
+          { error: 'Validation failed', issues: bodyParse.error.flatten() },
+          { status: 400 }
+        );
+      }
+      const { name, uploadId, heightCm } = bodyParse.data;
+
+      let photoUploadId: string | null = null;
+      if (uploadId) {
+        const [uploadRow] = await db
+          .select()
+          .from(upload)
+          .where(and(eq(upload.id, uploadId), eq(upload.userId, result.userId)));
+        if (!uploadRow) {
+          return Response.json({ error: 'Upload not found' }, { status: 404 });
+        }
+        photoUploadId = uploadId;
+      }
+
       const id = crypto.randomUUID();
-      const key = `avatars/${result.userId}/${id}.${ext}`;
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const mime = file.type || (ext === 'png' ? 'image/png' : 'image/jpeg');
-      await putObject(key, buffer, mime);
-
-      const name = (formData.get('name') as string) || file.name || 'Avatar';
       await db.insert(avatar).values({
         id,
         userId: result.userId,
-        name,
-        sourcePhotoKey: key,
+        name: name.trim(),
+        photoUploadId,
+        heightCm: heightCm ?? null,
       });
 
       const dtoResult = parseResponseDto(CreateAvatarResponseDtoSchema, {
@@ -122,15 +134,21 @@ export const avatarsRoutes = router({
         return Response.json({ error: 'Avatar not found' }, { status: 404 });
       }
 
-      const sourceKey = row.sourcePhotoKey;
-      if (!sourceKey) {
-        return Response.json({ error: 'Avatar has no source photo' }, { status: 400 });
+      if (!row.photoUploadId) {
+        return Response.json({ error: 'Avatar has no photo' }, { status: 400 });
       }
 
-      // Get photo and compute hash for caching
-      const buffer = await getObjectBuffer(sourceKey);
+      const [uploadRow] = await db
+        .select()
+        .from(upload)
+        .where(and(eq(upload.id, row.photoUploadId), eq(upload.userId, result.userId)));
+      if (!uploadRow) {
+        return Response.json({ error: 'Avatar photo upload not found' }, { status: 400 });
+      }
+
+      const buffer = await getObjectBuffer(uploadRow.storedKey);
       const photoHash = createHash('sha256').update(buffer).digest('hex');
-      const mimeType = mimeFromKey(sourceKey);
+      const mimeType = uploadRow.storedMime;
 
       // Check for cached analysis with same photo hash and model version
       const [cachedAnalysis] = await db
@@ -139,12 +157,15 @@ export const avatarsRoutes = router({
         .where(
           and(
             eq(avatarAnalysis.photoHash, photoHash),
-            eq(avatarAnalysis.modelVersion, AVATAR_ANALYSIS_MODEL_VERSION)
+            eq(avatarAnalysis.modelVersion, AVATAR_ANALYSIS_MODEL)
           )
         );
 
       if (cachedAnalysis) {
-        // Return cached result
+        logger.info(
+          { avatarId: id, photoHashPrefix: photoHash.slice(0, 16) },
+          'avatar_analysis cache hit'
+        );
         const cached = cachedAnalysis.responseJson as {
           success: boolean;
           data?: unknown;
@@ -177,33 +198,51 @@ export const avatarsRoutes = router({
 
       const analysis = analysisResult.data;
 
-      // Save analysis result to avatar_analysis table
-      await db.insert(avatarAnalysis).values({
-        id: crypto.randomUUID(),
-        userId: result.userId,
-        avatarId: id,
-        photoHash,
-        modelVersion: AVATAR_ANALYSIS_MODEL_VERSION,
-        responseJson: analysis as unknown as Record<string, unknown>,
-      });
+      await db
+        .insert(avatarAnalysis)
+        .values({
+          id: crypto.randomUUID(),
+          userId: result.userId,
+          avatarId: id,
+          photoHash,
+          modelVersion: AVATAR_ANALYSIS_MODEL,
+          responseJson: analysis as unknown as Record<string, unknown>,
+        })
+        .onConflictDoNothing({
+          target: [avatarAnalysis.photoHash, avatarAnalysis.modelVersion],
+        });
 
-      if (analysis.success === false) {
+      // Return the row that is now in DB (either we inserted it or it was already there)
+      const [analysisRow] = await db
+        .select()
+        .from(avatarAnalysis)
+        .where(
+          and(
+            eq(avatarAnalysis.photoHash, photoHash),
+            eq(avatarAnalysis.modelVersion, AVATAR_ANALYSIS_MODEL)
+          )
+        );
+
+      if (!analysisRow) {
+        return Response.json({ ok: false, error: 'Failed to save analysis' }, { status: 500 });
+      }
+
+      const response = analysisRow.responseJson as {
+        success: boolean;
+        data?: unknown;
+        error?: { code: string; message: string; issues: string[] };
+      };
+      if (response.success === false) {
         const dtoResult = parseResponseDto(AnalyzeAvatarErrorDtoSchema, {
           ok: false as const,
-          error: {
-            code: analysis.error.code,
-            message: analysis.error.message,
-            issues: analysis.error.issues,
-          },
+          error: response.error!,
         });
         if (!dtoResult.ok) return dtoResult.response;
         return Response.json(dtoResult.data, { status: 422 });
       }
-
-      const bodyProfile = analysis.data;
       const dtoResult = parseResponseDto(AnalyzeAvatarSuccessDtoSchema, {
         ok: true as const,
-        data: bodyProfile,
+        data: response.data,
       });
       if (!dtoResult.ok) return dtoResult.response;
       return Response.json(dtoResult.data);
@@ -318,16 +357,7 @@ export const avatarsRoutes = router({
         .from(outfit)
         .where(eq(outfit.avatarId, id));
 
-      // Delete associated storage file if exists
-      if (row.sourcePhotoKey) {
-        try {
-          await deleteObject(row.sourcePhotoKey);
-        } catch {
-          // Ignore storage deletion errors
-        }
-      }
-
-      // Delete avatar (cascades to outfits via FK)
+      // Delete avatar (cascades to outfits; upload is kept in uploads table)
       await db.delete(avatar).where(eq(avatar.id, id));
 
       const dtoResult = parseResponseDto(DeleteAvatarResponseDtoSchema, {

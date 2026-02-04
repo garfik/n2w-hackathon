@@ -106,9 +106,9 @@ function hasConfidence(
   return 'confidence' in profile && profile.confidence != null;
 }
 
-function getAvatarImageUrl(sourcePhotoKey: string | null): string | null {
-  if (!sourcePhotoKey) return null;
-  return `/api/storage/object?key=${encodeURIComponent(sourcePhotoKey)}`;
+function getAvatarImageUrl(photoUploadId: string | null): string | null {
+  if (!photoUploadId) return null;
+  return `/api/uploads/${photoUploadId}/image`;
 }
 
 export function AvatarEditPage() {
@@ -223,7 +223,7 @@ export function AvatarEditPage() {
     );
   }
 
-  const imageUrl = getAvatarImageUrl(avatar.sourcePhotoKey);
+  const imageUrl = getAvatarImageUrl(avatar.photoUploadId);
 
   return (
     <div className="max-w-4xl mx-auto">

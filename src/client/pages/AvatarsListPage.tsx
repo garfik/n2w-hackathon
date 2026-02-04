@@ -16,9 +16,9 @@ import {
 } from '@components/ui/alert-dialog';
 import { listAvatars, deleteAvatar, type Avatar } from '@client/lib/n2wApi';
 
-function getAvatarImageUrl(sourcePhotoKey: string | null): string | null {
-  if (!sourcePhotoKey) return null;
-  return `/api/storage/object?key=${encodeURIComponent(sourcePhotoKey)}`;
+function getAvatarImageUrl(photoUploadId: string | null): string | null {
+  if (!photoUploadId) return null;
+  return `/api/uploads/${photoUploadId}/image`;
 }
 
 export function AvatarsListPage() {
@@ -108,7 +108,7 @@ export function AvatarsListPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {avatars.map((avatar) => {
-            const imageUrl = getAvatarImageUrl(avatar.sourcePhotoKey);
+            const imageUrl = getAvatarImageUrl(avatar.photoUploadId);
             const isDeleting = deleteLoading === avatar.id;
 
             return (

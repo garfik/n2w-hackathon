@@ -1,5 +1,6 @@
 import { relations } from 'drizzle-orm';
 import {
+  bigint,
   index,
   integer,
   jsonb,
@@ -19,13 +20,50 @@ const timestamps = {
     .notNull(),
 };
 
+// ============================================================
+// UPLOADS - universal storage for uploaded images
+// ============================================================
+export const upload = pgTable(
+  'upload',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    // Hash of original file for deduplication
+    originalSha256: text('original_sha256').notNull(),
+    originalMime: text('original_mime').notNull(),
+    originalSizeBytes: bigint('original_size_bytes', { mode: 'number' }).notNull(),
+    // Stored file data (converted JPEG)
+    storedKey: text('stored_key').notNull(),
+    storedMime: text('stored_mime').notNull().default('image/jpeg'),
+    storedSizeBytes: bigint('stored_size_bytes', { mode: 'number' }).notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    // Deduplication by hash (one record per user+hash)
+    uniqueIndex('upload_user_sha256_idx').on(table.userId, table.originalSha256),
+    index('upload_sha256_idx').on(table.originalSha256),
+    index('upload_user_id_idx').on(table.userId),
+  ]
+);
+
+export const uploadRelations = relations(upload, ({ one }) => ({
+  user: one(user, {
+    fields: [upload.userId],
+    references: [user.id],
+  }),
+}));
+
 export const avatar = pgTable('avatar', {
   id: text('id').primaryKey(),
   userId: text('user_id')
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
-  sourcePhotoKey: text('source_photo_key'),
+  photoUploadId: text('photo_upload_id').references(() => upload.id, { onDelete: 'restrict' }),
   bodyProfileJson: jsonb('body_profile_json'),
   heightCm: integer('height_cm'),
   ...timestamps,
@@ -158,12 +196,17 @@ export const userDomainRelations = relations(user, ({ many }) => ({
   outfitAnalyses: many(outfitAnalysis),
   tryonResults: many(tryonResult),
   outfits: many(outfit),
+  uploads: many(upload),
 }));
 
 export const avatarRelations = relations(avatar, ({ one, many }) => ({
   user: one(user, {
     fields: [avatar.userId],
     references: [user.id],
+  }),
+  photoUpload: one(upload, {
+    fields: [avatar.photoUploadId],
+    references: [upload.id],
   }),
   analyses: many(avatarAnalysis),
 }));

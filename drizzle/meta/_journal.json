@@ -29,6 +29,20 @@
       "when": 1770154814937,
       "tag": "0003_many_umar",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1770223292926,
+      "tag": "0004_slimy_manta",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1770230000000,
+      "tag": "0005_avatar_photo_upload",
+      "breakpoints": true
     }
   ]
 }

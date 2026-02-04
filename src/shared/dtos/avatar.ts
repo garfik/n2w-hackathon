@@ -29,7 +29,7 @@ export const AvatarDtoSchema = z.object({
   id: z.string(),
   userId: z.string(),
   name: z.string(),
-  sourcePhotoKey: z.string().nullable(),
+  photoUploadId: z.string().nullable(),
   bodyProfileJson: z.unknown().nullable(),
   heightCm: z.number().nullable(),
   createdAt: z.coerce.date(),
@@ -102,7 +102,16 @@ export type AnalyzeAvatarResponseDto = z.output<typeof AnalyzeAvatarResponseDtoS
 
 // --- Request (client → server) ---
 
-export type CreateAvatarParams = { file: File; name: string };
+export const CreateAvatarBodySchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  uploadId: z.string().min(1).optional(),
+  heightCm: z.number().min(0).optional(),
+});
+
+export type CreateAvatarBody = z.input<typeof CreateAvatarBodySchema>;
+
+/** Client params for createAvatar (uploadId required; heightCm optional). */
+export type CreateAvatarParams = CreateAvatarBody;
 
 export const UpdateAvatarBodySchema = z.object({
   name: z.string().min(1).optional(),

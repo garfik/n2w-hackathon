@@ -35,27 +35,24 @@ export type AnalyzeResponse = AnalyzeAvatarResponseDto;
 
 export type AnalyzeAvatarParams = { avatarId: string };
 
-export async function createAvatar({
-  file,
-  name,
-}: CreateAvatarParams): Promise<CreateAvatarResponseDto> {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('name', name);
+export async function createAvatar(params: CreateAvatarParams): Promise<CreateAvatarResponseDto> {
   const res = await fetch('/api/avatars', {
     method: 'POST',
     credentials,
-    body: formData,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: params.name,
+      uploadId: params.uploadId,
+      ...(params.heightCm != null && { heightCm: params.heightCm }),
+    }),
   });
   const raw = await res.json();
   if (!res.ok) {
     const err = z.object({ error: z.string().optional() }).safeParse(raw);
-    throw new Error(err.success ? (err.data.error ?? 'Upload failed') : 'Upload failed');
+    throw new Error(err.success ? (err.data.error ?? 'Create failed') : 'Create failed');
   }
   const parsed = CreateAvatarResponseDtoSchema.safeParse(raw);
-  if (!parsed.success) {
-    throw new Error('Invalid create avatar response');
-  }
+  if (!parsed.success) throw new Error('Invalid create avatar response');
   return parsed.data;
 }
 
