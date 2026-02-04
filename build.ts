@@ -133,12 +133,16 @@ console.log(
 const result = await Bun.build({
   entrypoints,
   outdir,
+  publicPath: '/',
   plugins: [plugin],
   minify: true,
   target: 'browser',
   sourcemap: 'linked',
   define: {
     'process.env.NODE_ENV': JSON.stringify('production'),
+    'process.env.BUN_PUBLIC_BETTER_AUTH_URL': JSON.stringify(
+      process.env.BUN_PUBLIC_BETTER_AUTH_URL ?? ''
+    ),
   },
   ...cliConfig,
 });
