@@ -1,24 +1,19 @@
 import { auth } from '../auth';
-
-export type RequireUserResult =
-  | { ok: true; userId: string; email: string }
-  | { ok: false; response: Response };
+import { apiErr } from '../routes/response';
 
 /**
- * Get session from request (cookies). Returns user info or 401 response.
+ * Get session from request (cookies). Returns apiErr(401) or user payload.
  */
-export async function requireUser(req: Request): Promise<RequireUserResult> {
+export async function requireUser(
+  req: Request
+): Promise<Response | { userId: string; email: string }> {
   const session = await auth.api.getSession({
     headers: req.headers,
   });
   if (!session?.user) {
-    return {
-      ok: false,
-      response: Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 }),
-    };
+    return apiErr({ message: 'Unauthorized' }, 401);
   }
   return {
-    ok: true,
     userId: session.user.id,
     email: session.user.email ?? '',
   };

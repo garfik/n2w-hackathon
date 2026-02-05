@@ -130,11 +130,11 @@ export function AvatarNewPage() {
     setCreateError(null);
     setCreateLoading(true);
     try {
-      const { id } = await createAvatar({
+      const res = await createAvatar({
         uploadId: uploadResult.id,
         name: avatarName.trim() || 'Avatar',
       });
-      setAvatarId(id);
+      setAvatarId(res.data.id);
       setAnalysisStatus('loading');
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Create failed');
@@ -151,7 +151,7 @@ export function AvatarNewPage() {
       try {
         const result = await analyzeAvatar({ avatarId });
         if (cancelled) return;
-        if (result.ok === true) {
+        if (result.success === true) {
           setFormProfile(result.data);
           setAnalysisStatus('success');
         } else {
@@ -313,7 +313,7 @@ export function AvatarNewPage() {
                 <p className="text-sm mb-2">
                   Please upload another full-body photo (one person, clear view).
                 </p>
-                {analysisError.issues.length > 0 && (
+                {analysisError.issues && analysisError.issues.length > 0 && (
                   <ul className="list-disc list-inside text-sm mb-2">
                     {analysisError.issues.map((issue, i) => (
                       <li key={i}>{issue}</li>

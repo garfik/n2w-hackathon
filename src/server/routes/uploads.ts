@@ -7,27 +7,23 @@ import { putObject, getObjectBuffer } from '../lib/storage';
 import { sha256 } from '../lib/hash';
 import { processImage } from '../lib/image/processImage';
 import { logger } from '../lib/logger';
+import { apiOk, apiErr } from './response';
 
 const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
-
-function okResponse<T>(data: T, status = 200) {
-  return Response.json({ ok: true, data }, { status });
-}
-
-function errorResponse(code: string, message: string, status: number) {
-  return Response.json({ ok: false, error: { code, message } }, { status });
-}
 
 export const uploadsRoutes = router({
   '/api/uploads': {
     async POST(req) {
       const userResult = await requireUser(req);
-      if (!userResult.ok) return userResult.response;
+      if (userResult instanceof Response) return userResult;
       const { userId } = userResult;
 
       const contentType = req.headers.get('content-type') ?? '';
       if (!contentType.includes('multipart/form-data')) {
-        return errorResponse('INVALID_CONTENT_TYPE', 'Expected multipart/form-data', 400);
+        return apiErr(
+          { code: 'INVALID_CONTENT_TYPE', message: 'Expected multipart/form-data' },
+          400
+        );
       }
 
       let formData: FormData;
@@ -35,18 +31,20 @@ export const uploadsRoutes = router({
         formData = await req.formData();
       } catch (err) {
         logger.warn({ err }, 'Failed to parse form data');
-        return errorResponse('INVALID_FORM_DATA', 'Failed to parse form data', 400);
+        return apiErr({ code: 'INVALID_FORM_DATA', message: 'Failed to parse form data' }, 400);
       }
 
       const file = formData.get('file');
       if (!file || !(file instanceof File)) {
-        return errorResponse('MISSING_FILE', 'Missing "file" field in form data', 400);
+        return apiErr({ code: 'MISSING_FILE', message: 'Missing "file" field in form data' }, 400);
       }
 
       if (file.size > MAX_FILE_SIZE_BYTES) {
-        return errorResponse(
-          'FILE_TOO_LARGE',
-          `File size exceeds maximum of ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB`,
+        return apiErr(
+          {
+            code: 'FILE_TOO_LARGE',
+            message: `File size exceeds maximum of ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB`,
+          },
           413
         );
       }
@@ -70,7 +68,7 @@ export const uploadsRoutes = router({
       if (existing) {
         if (existing.userId === userId) {
           logger.info({ uploadId: existing.id }, 'Returning existing upload (same user)');
-          return okResponse({
+          return apiOk({
             id: existing.id,
             url: `/api/uploads/${existing.id}/image`,
             width: existing.width,
@@ -96,7 +94,7 @@ export const uploadsRoutes = router({
           { uploadId: newId, linkedFrom: existing.id },
           'Created linked upload (different user, same content)'
         );
-        return okResponse({
+        return apiOk({
           id: newId,
           url: `/api/uploads/${newId}/image`,
           width: existing.width,
@@ -110,9 +108,11 @@ export const uploadsRoutes = router({
         processed = await processImage(originalBuffer);
       } catch (err) {
         logger.error({ err, originalMime }, 'Failed to process image');
-        return errorResponse(
-          'IMAGE_PROCESSING_FAILED',
-          err instanceof Error ? err.message : 'Failed to process image',
+        return apiErr(
+          {
+            code: 'IMAGE_PROCESSING_FAILED',
+            message: err instanceof Error ? err.message : 'Failed to process image',
+          },
           422
         );
       }
@@ -124,7 +124,7 @@ export const uploadsRoutes = router({
         await putObject(storedKey, processed.jpegBuffer, 'image/jpeg');
       } catch (err) {
         logger.error({ err, storedKey }, 'Failed to upload to S3');
-        return errorResponse('STORAGE_ERROR', 'Failed to save image to storage', 500);
+        return apiErr({ code: 'STORAGE_ERROR', message: 'Failed to save image to storage' }, 500);
       }
 
       try {
@@ -142,7 +142,7 @@ export const uploadsRoutes = router({
         });
       } catch (err) {
         logger.error({ err, id }, 'Failed to save upload record');
-        return errorResponse('DATABASE_ERROR', 'Failed to save upload record', 500);
+        return apiErr({ code: 'DATABASE_ERROR', message: 'Failed to save upload record' }, 500);
       }
 
       logger.info(
@@ -155,7 +155,7 @@ export const uploadsRoutes = router({
         'Upload completed'
       );
 
-      return okResponse({
+      return apiOk({
         id,
         url: `/api/uploads/${id}/image`,
         width: processed.width,
@@ -168,12 +168,12 @@ export const uploadsRoutes = router({
   '/api/uploads/:id/image': {
     async GET(req) {
       const userResult = await requireUser(req);
-      if (!userResult.ok) return userResult.response;
+      if (userResult instanceof Response) return userResult;
       const { userId } = userResult;
 
       const { id } = req.params;
       if (!id) {
-        return errorResponse('MISSING_ID', 'Missing upload ID', 400);
+        return apiErr({ code: 'MISSING_ID', message: 'Missing upload ID' }, 400);
       }
 
       const [row] = await db
@@ -182,7 +182,7 @@ export const uploadsRoutes = router({
         .where(and(eq(upload.id, id), eq(upload.userId, userId)));
 
       if (!row) {
-        return errorResponse('NOT_FOUND', 'Upload not found', 404);
+        return apiErr({ code: 'NOT_FOUND', message: 'Upload not found' }, 404);
       }
 
       try {
@@ -196,7 +196,7 @@ export const uploadsRoutes = router({
         });
       } catch (err) {
         logger.error({ err, storedKey: row.storedKey }, 'Failed to fetch from S3');
-        return errorResponse('STORAGE_ERROR', 'Failed to retrieve image', 500);
+        return apiErr({ code: 'STORAGE_ERROR', message: 'Failed to retrieve image' }, 500);
       }
     },
   },

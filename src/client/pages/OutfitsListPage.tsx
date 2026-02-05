@@ -29,8 +29,8 @@ export function OutfitsListPage() {
         url.searchParams.set('avatarId', avatarId);
         const res = await fetch(url.toString(), { credentials: 'include' });
         if (!res.ok) throw new Error('Failed to load outfits');
-        const data = (await res.json()) as { ok: boolean; outfits?: Outfit[] };
-        if (!cancelled && data.outfits) setOutfits(data.outfits);
+        const data = (await res.json()) as { success: boolean; data?: { outfits?: Outfit[] } };
+        if (!cancelled && data.data?.outfits) setOutfits(data.data.outfits);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load');
       }

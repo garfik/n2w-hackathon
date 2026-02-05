@@ -4,16 +4,10 @@ import { Upload, X, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Alert, AlertDescription } from './ui/alert';
-import { Progress } from './ui/progress';
 import { cn } from '../lib/utils';
+import { uploadFile as uploadFileApi, type UploadResult } from '../lib/n2wApi';
 
-export interface UploadResult {
-  id: string;
-  url: string;
-  width: number;
-  height: number;
-  mimeType: string;
-}
+export type { UploadResult };
 
 export interface ImageUploadCardProps {
   /** Callback when upload completes successfully */
@@ -35,7 +29,7 @@ export interface ImageUploadCardProps {
 type UploadState =
   | { status: 'idle' }
   | { status: 'preview'; file: File; previewUrl: string }
-  | { status: 'uploading'; file: File; previewUrl: string; progress: number }
+  | { status: 'uploading'; file: File; previewUrl: string }
   | { status: 'success'; result: UploadResult; previewUrl: string }
   | { status: 'error'; message: string; file?: File; previewUrl?: string };
 
@@ -74,41 +68,9 @@ export function ImageUploadCard({
 
   const uploadFile = useCallback(
     async (file: File, previewUrl: string) => {
-      setState({ status: 'uploading', file, previewUrl, progress: 0 });
-
-      const formData = new FormData();
-      formData.append('file', file);
-
+      setState({ status: 'uploading', file, previewUrl });
       try {
-        // Using fetch with no progress tracking (Bun doesn't support upload progress easily)
-        // Simulate progress for UX
-        const progressInterval = setInterval(() => {
-          setState((prev) => {
-            if (prev.status !== 'uploading') return prev;
-            const newProgress = Math.min(prev.progress + 10, 90);
-            return { ...prev, progress: newProgress };
-          });
-        }, 200);
-
-        const response = await fetch('/api/uploads', {
-          method: 'POST',
-          body: formData,
-          credentials: 'include',
-        });
-
-        clearInterval(progressInterval);
-
-        const json = await response.json();
-
-        if (!response.ok || !json.ok) {
-          const errorMessage =
-            json.error?.message || json.error || `Upload failed (${response.status})`;
-          setState({ status: 'error', message: errorMessage, file, previewUrl });
-          return;
-        }
-
-        const result: UploadResult = json.data;
-        // Use server URL for preview so we show the converted JPEG (e.g. after HEIC)
+        const result = await uploadFileApi(file);
         setState({ status: 'success', result, previewUrl: result.url });
         onUploaded(result);
       } catch (err) {
@@ -218,8 +180,7 @@ export function ImageUploadCard({
             {state.status === 'uploading' && (
               <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-                <p className="text-sm font-medium mb-2">Uploading...</p>
-                <Progress value={state.progress} className="w-48" />
+                <p className="text-sm font-medium">Uploading...</p>
               </div>
             )}
 

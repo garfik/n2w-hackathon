@@ -3,12 +3,13 @@ import { requireUser } from '../lib/requireUser';
 import { db } from '../../db/client';
 import { avatar } from '../../db/domain.schema';
 import { eq, count } from 'drizzle-orm';
+import { apiOk } from './response';
 
 export const appRoutes = router({
   '/api/app/bootstrap': {
     async GET(req) {
       const result = await requireUser(req);
-      if (!result.ok) return result.response;
+      if (result instanceof Response) return result;
 
       const [row] = await db
         .select({ count: count() })
@@ -17,10 +18,7 @@ export const appRoutes = router({
 
       const avatarExists = (row?.count ?? 0) > 0;
 
-      return Response.json({
-        ok: true,
-        avatarExists,
-      });
+      return apiOk({ avatarExists });
     },
   },
 });

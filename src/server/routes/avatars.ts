@@ -9,6 +9,7 @@ import { getObjectBuffer } from '../lib/storage';
 import { logger } from '../lib/logger';
 import { analyzeAvatar as analyzeAvatarLib, AVATAR_ANALYSIS_MODEL } from '../prompts/analyzeAvatar';
 import { AvatarAnalysisResultSchema } from '@shared/ai-schemas/avatar';
+import { apiErr } from './response';
 import {
   ListAvatarsResponseDtoSchema,
   GetAvatarResponseDtoSchema,
@@ -21,7 +22,7 @@ import {
   UpdateAvatarBodySchema,
 } from '@shared/dtos/avatar';
 
-/** Parse payload with schema; on validation failure return 422 instead of 500. */
+/** Parse payload with schema; on validation failure return 422. */
 function parseResponseDto<T>(
   schema: z.ZodType<T>,
   data: unknown
@@ -30,10 +31,7 @@ function parseResponseDto<T>(
   if (result.success) return { ok: true, data: result.data };
   return {
     ok: false,
-    response: Response.json(
-      { error: 'Validation error', issues: result.error.flatten() },
-      { status: 422 }
-    ),
+    response: apiErr({ message: 'Validation error', issues: result.error.flatten() }, 422),
   };
 }
 
@@ -41,7 +39,7 @@ export const avatarsRoutes = router({
   '/api/avatars': {
     async GET(req) {
       const result = await requireUser(req);
-      if (!result.ok) return result.response;
+      if (result instanceof Response) return result;
 
       const rows = await db
         .select()
@@ -50,8 +48,8 @@ export const avatarsRoutes = router({
         .orderBy(desc(avatar.createdAt));
 
       const dtoResult = parseResponseDto(ListAvatarsResponseDtoSchema, {
-        ok: true as const,
-        avatars: rows,
+        success: true as const,
+        data: { avatars: rows },
       });
       if (!dtoResult.ok) return dtoResult.response;
       return Response.json(dtoResult.data);
@@ -59,13 +57,15 @@ export const avatarsRoutes = router({
 
     async POST(req) {
       const result = await requireUser(req);
-      if (!result.ok) return result.response;
+      if (result instanceof Response) return result;
 
       const contentType = req.headers.get('content-type') ?? '';
       if (!contentType.includes('application/json')) {
-        return Response.json(
-          { error: 'Expected application/json with name, uploadId, and optional heightCm' },
-          { status: 400 }
+        return apiErr(
+          {
+            message: 'Expected application/json with name, uploadId, and optional heightCm',
+          },
+          400
         );
       }
 
@@ -73,15 +73,12 @@ export const avatarsRoutes = router({
       try {
         rawBody = await req.json();
       } catch {
-        return Response.json({ error: 'Invalid JSON' }, { status: 400 });
+        return apiErr({ message: 'Invalid JSON' }, 400);
       }
 
       const bodyParse = CreateAvatarBodySchema.safeParse(rawBody);
       if (!bodyParse.success) {
-        return Response.json(
-          { error: 'Validation failed', issues: bodyParse.error.flatten() },
-          { status: 400 }
-        );
+        return apiErr({ message: 'Validation failed', issues: bodyParse.error.flatten() }, 400);
       }
       const { name, uploadId, heightCm } = bodyParse.data;
 
@@ -92,7 +89,7 @@ export const avatarsRoutes = router({
           .from(upload)
           .where(and(eq(upload.id, uploadId), eq(upload.userId, result.userId)));
         if (!uploadRow) {
-          return Response.json({ error: 'Upload not found' }, { status: 404 });
+          return apiErr({ message: 'Upload not found' }, 404);
         }
         photoUploadId = uploadId;
       }
@@ -107,8 +104,8 @@ export const avatarsRoutes = router({
       });
 
       const dtoResult = parseResponseDto(CreateAvatarResponseDtoSchema, {
-        ok: true as const,
-        id,
+        success: true as const,
+        data: { id },
       });
       if (!dtoResult.ok) return dtoResult.response;
       return Response.json(dtoResult.data);
@@ -118,11 +115,11 @@ export const avatarsRoutes = router({
   '/api/avatars/:id/analyze': {
     async POST(req) {
       const result = await requireUser(req);
-      if (!result.ok) return result.response;
+      if (result instanceof Response) return result;
 
       const id = req.params.id;
       if (!id) {
-        return Response.json({ error: 'Missing avatar id' }, { status: 400 });
+        return apiErr({ message: 'Missing avatar id' }, 400);
       }
 
       const [row] = await db
@@ -131,11 +128,11 @@ export const avatarsRoutes = router({
         .where(and(eq(avatar.id, id), eq(avatar.userId, result.userId)));
 
       if (!row) {
-        return Response.json({ error: 'Avatar not found' }, { status: 404 });
+        return apiErr({ message: 'Avatar not found' }, 404);
       }
 
       if (!row.photoUploadId) {
-        return Response.json({ error: 'Avatar has no photo' }, { status: 400 });
+        return apiErr({ message: 'Avatar has no photo' }, 400);
       }
 
       const [uploadRow] = await db
@@ -143,7 +140,7 @@ export const avatarsRoutes = router({
         .from(upload)
         .where(and(eq(upload.id, row.photoUploadId), eq(upload.userId, result.userId)));
       if (!uploadRow) {
-        return Response.json({ error: 'Avatar photo upload not found' }, { status: 400 });
+        return apiErr({ message: 'Avatar photo upload not found' }, 400);
       }
 
       const buffer = await getObjectBuffer(uploadRow.storedKey);
@@ -173,7 +170,7 @@ export const avatarsRoutes = router({
         };
         if (cached.success === false) {
           const dtoResult = parseResponseDto(AnalyzeAvatarErrorDtoSchema, {
-            ok: false as const,
+            success: false as const,
             error: (cached as { error: { code: string; message: string; issues: string[] } }).error,
           });
           if (!dtoResult.ok) return dtoResult.response;
@@ -181,7 +178,7 @@ export const avatarsRoutes = router({
         }
 
         const dtoResult = parseResponseDto(AnalyzeAvatarSuccessDtoSchema, {
-          ok: true as const,
+          success: true as const,
           data: (cached as { data: unknown }).data,
         });
         if (!dtoResult.ok) return dtoResult.response;
@@ -193,7 +190,7 @@ export const avatarsRoutes = router({
       const raw = await analyzeAvatarLib([{ base64, mimeType }]);
       const analysisResult = AvatarAnalysisResultSchema.safeParse(raw);
       if (!analysisResult.success) {
-        return Response.json({ ok: false, error: 'Invalid analysis response' }, { status: 502 });
+        return apiErr({ message: 'Invalid analysis response' }, 502);
       }
 
       const analysis = analysisResult.data;
@@ -224,7 +221,7 @@ export const avatarsRoutes = router({
         );
 
       if (!analysisRow) {
-        return Response.json({ ok: false, error: 'Failed to save analysis' }, { status: 500 });
+        return apiErr({ message: 'Failed to save analysis' }, 500);
       }
 
       const response = analysisRow.responseJson as {
@@ -234,14 +231,14 @@ export const avatarsRoutes = router({
       };
       if (response.success === false) {
         const dtoResult = parseResponseDto(AnalyzeAvatarErrorDtoSchema, {
-          ok: false as const,
+          success: false as const,
           error: response.error!,
         });
         if (!dtoResult.ok) return dtoResult.response;
         return Response.json(dtoResult.data, { status: 422 });
       }
       const dtoResult = parseResponseDto(AnalyzeAvatarSuccessDtoSchema, {
-        ok: true as const,
+        success: true as const,
         data: response.data,
       });
       if (!dtoResult.ok) return dtoResult.response;
@@ -252,11 +249,11 @@ export const avatarsRoutes = router({
   '/api/avatars/:id': {
     async GET(req) {
       const result = await requireUser(req);
-      if (!result.ok) return result.response;
+      if (result instanceof Response) return result;
 
       const id = req.params.id;
       if (!id) {
-        return Response.json({ error: 'Missing avatar id' }, { status: 400 });
+        return apiErr({ message: 'Missing avatar id' }, 400);
       }
 
       const [row] = await db
@@ -265,12 +262,12 @@ export const avatarsRoutes = router({
         .where(and(eq(avatar.id, id), eq(avatar.userId, result.userId)));
 
       if (!row) {
-        return Response.json({ error: 'Avatar not found' }, { status: 404 });
+        return apiErr({ message: 'Avatar not found' }, 404);
       }
 
       const dtoResult = parseResponseDto(GetAvatarResponseDtoSchema, {
-        ok: true as const,
-        avatar: row,
+        success: true as const,
+        data: { avatar: row },
       });
       if (!dtoResult.ok) return dtoResult.response;
       return Response.json(dtoResult.data);
@@ -278,26 +275,23 @@ export const avatarsRoutes = router({
 
     async PATCH(req) {
       const result = await requireUser(req);
-      if (!result.ok) return result.response;
+      if (result instanceof Response) return result;
 
       const id = req.params.id;
       if (!id) {
-        return Response.json({ error: 'Missing avatar id' }, { status: 400 });
+        return apiErr({ message: 'Missing avatar id' }, 400);
       }
 
       let rawBody: unknown;
       try {
         rawBody = await req.json();
       } catch {
-        return Response.json({ error: 'Invalid JSON' }, { status: 400 });
+        return apiErr({ message: 'Invalid JSON' }, 400);
       }
 
       const bodyParse = UpdateAvatarBodySchema.safeParse(rawBody);
       if (!bodyParse.success) {
-        return Response.json(
-          { error: 'Invalid body', issues: bodyParse.error.flatten() },
-          { status: 400 }
-        );
+        return apiErr({ message: 'Invalid body', issues: bodyParse.error.flatten() }, 400);
       }
       const body = bodyParse.data;
 
@@ -307,7 +301,7 @@ export const avatarsRoutes = router({
         .where(and(eq(avatar.id, id), eq(avatar.userId, result.userId)));
 
       if (!row) {
-        return Response.json({ error: 'Avatar not found' }, { status: 404 });
+        return apiErr({ message: 'Avatar not found' }, 404);
       }
 
       const updates: { name?: string; bodyProfileJson?: unknown; heightCm?: number } = {};
@@ -317,8 +311,8 @@ export const avatarsRoutes = router({
 
       if (Object.keys(updates).length === 0) {
         const dtoResult = parseResponseDto(UpdateAvatarResponseDtoSchema, {
-          ok: true as const,
-          avatar: row,
+          success: true as const,
+          data: { avatar: row },
         });
         if (!dtoResult.ok) return dtoResult.response;
         return Response.json(dtoResult.data);
@@ -326,8 +320,8 @@ export const avatarsRoutes = router({
 
       const [updated] = await db.update(avatar).set(updates).where(eq(avatar.id, id)).returning();
       const dtoResult = parseResponseDto(UpdateAvatarResponseDtoSchema, {
-        ok: true as const,
-        avatar: updated ?? row,
+        success: true as const,
+        data: { avatar: updated ?? row },
       });
       if (!dtoResult.ok) return dtoResult.response;
       return Response.json(dtoResult.data);
@@ -335,11 +329,11 @@ export const avatarsRoutes = router({
 
     async DELETE(req) {
       const result = await requireUser(req);
-      if (!result.ok) return result.response;
+      if (result instanceof Response) return result;
 
       const id = req.params.id;
       if (!id) {
-        return Response.json({ error: 'Missing avatar id' }, { status: 400 });
+        return apiErr({ message: 'Missing avatar id' }, 400);
       }
 
       const [row] = await db
@@ -348,7 +342,7 @@ export const avatarsRoutes = router({
         .where(and(eq(avatar.id, id), eq(avatar.userId, result.userId)));
 
       if (!row) {
-        return Response.json({ error: 'Avatar not found' }, { status: 404 });
+        return apiErr({ message: 'Avatar not found' }, 404);
       }
 
       // Check if avatar has outfits
@@ -361,8 +355,8 @@ export const avatarsRoutes = router({
       await db.delete(avatar).where(eq(avatar.id, id));
 
       const dtoResult = parseResponseDto(DeleteAvatarResponseDtoSchema, {
-        ok: true as const,
-        deletedOutfitsCount: outfitCount?.count ?? 0,
+        success: true as const,
+        data: { deletedOutfitsCount: outfitCount?.count ?? 0 },
       });
       if (!dtoResult.ok) return dtoResult.response;
       return Response.json(dtoResult.data);

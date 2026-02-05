@@ -40,16 +40,19 @@ export function OutfitNewPage() {
           credentials: 'include',
           body: formData,
         });
-        if (!res.ok) {
-          const data = (await res.json()) as { error?: string };
-          throw new Error(data.error ?? 'Upload failed');
+        const data = (await res.json()) as
+          | { success: true; data: { id: string; thumbnailUrl: string } }
+          | { success: false; error: { message?: string } };
+        if (!res.ok || !data.success) {
+          throw new Error(
+            data.success === false ? (data.error?.message ?? 'Upload failed') : 'Upload failed'
+          );
         }
-        const data = (await res.json()) as { ok: boolean; id: string; thumbnailUrl: string };
         setGarments((prev) => [
           ...prev,
           {
-            id: data.id,
-            thumbnailUrl: data.thumbnailUrl,
+            id: data.data.id,
+            thumbnailUrl: data.data.thumbnailUrl,
             name: file.name.replace(/\.[^.]+$/, '') || 'Garment',
           },
         ]);
@@ -99,12 +102,15 @@ export function OutfitNewPage() {
           avatarId,
         }),
       });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error ?? 'Create failed');
+      const data = (await res.json()) as
+        | { success: true; data: { id: string } }
+        | { success: false; error: { message?: string } };
+      if (!res.ok || !data.success) {
+        throw new Error(
+          data.success === false ? (data.error?.message ?? 'Create failed') : 'Create failed'
+        );
       }
-      const data = (await res.json()) as { ok: boolean; id: string };
-      navigate(`/app/avatars/${avatarId}/outfits/${data.id}`, { replace: true });
+      navigate(`/app/avatars/${avatarId}/outfits/${data.data.id}`, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed');
     } finally {

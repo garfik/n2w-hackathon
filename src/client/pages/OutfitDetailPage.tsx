@@ -30,8 +30,8 @@ export function OutfitDetailPage() {
           if (res.status === 404) throw new Error('Outfit not found');
           throw new Error('Failed to load outfit');
         }
-        const data = (await res.json()) as { ok: boolean; outfit?: OutfitDetail };
-        if (!cancelled && data.outfit) setOutfit(data.outfit);
+        const data = (await res.json()) as { success: boolean; data?: { outfit?: OutfitDetail } };
+        if (!cancelled && data.data?.outfit) setOutfit(data.data.outfit);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load');
       }

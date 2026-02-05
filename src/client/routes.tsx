@@ -1,4 +1,5 @@
 import { createBrowserRouter, Navigate, redirect, type LoaderFunctionArgs } from 'react-router-dom';
+import { getAppBootstrap, getMe } from './lib/n2wApi';
 import { AppLayout } from './pages/AppLayout';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
@@ -12,29 +13,22 @@ import { OutfitNewPage } from './pages/OutfitNewPage';
 import { OutfitDetailPage } from './pages/OutfitDetailPage';
 
 async function appBootstrapLoader({ request }: LoaderFunctionArgs) {
-  const res = await fetch('/api/app/bootstrap', { credentials: 'include' });
-  if (res.status === 401) {
-    return redirect('/login');
-  }
-  if (!res.ok) {
-    throw new Response('Bootstrap failed', { status: res.status });
-  }
-  const data = (await res.json()) as { ok: boolean; avatarExists?: boolean };
-  const avatarExists = data.avatarExists ?? false;
+  const result = await getAppBootstrap();
+  if ('status' in result) return redirect('/login');
   const pathname = new URL(request.url).pathname;
-
-  // If no avatars exist, redirect to create first one (except if already there)
-  if (!avatarExists && pathname !== '/app/avatars/new') {
+  if (!result.avatarExists && pathname !== '/app/avatars/new') {
     return redirect('/app/avatars/new');
   }
-
-  return { avatarExists };
+  return { avatarExists: result.avatarExists };
 }
 
 async function landingLoader() {
-  const res = await fetch('/api/me', { credentials: 'include' });
-  const loggedIn = res.ok && ((await res.json()) as { ok?: boolean }).ok === true;
-  return { loggedIn };
+  try {
+    await getMe();
+    return { loggedIn: true };
+  } catch {
+    return { loggedIn: false };
+  }
 }
 
 export const router = createBrowserRouter([

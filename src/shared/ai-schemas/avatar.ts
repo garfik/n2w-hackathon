@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { apiResponseSchema } from '@shared/api-response';
 
 /**
  * AvatarBodyProfileSchema
@@ -148,15 +149,9 @@ export const AvatarAnalysisErrorSchema = z.object({
 
 export type AvatarAnalysisError = z.output<typeof AvatarAnalysisErrorSchema>;
 
-export const AvatarAnalysisResultSchema = z.discriminatedUnion('success', [
-  z.object({
-    success: z.literal(true),
-    data: AvatarBodyProfileSchema,
-  }),
-  z.object({
-    success: z.literal(false),
-    error: AvatarAnalysisErrorSchema,
-  }),
-]);
+export const AvatarAnalysisResultSchema = apiResponseSchema(
+  AvatarBodyProfileSchema,
+  AvatarAnalysisErrorSchema
+);
 
 export type AvatarAnalysisResult = z.output<typeof AvatarAnalysisResultSchema>;

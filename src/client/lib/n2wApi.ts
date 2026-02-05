@@ -1,4 +1,10 @@
 import {
+  AppBootstrapResponseDtoSchema,
+  MeResponseDtoSchema,
+  UploadResponseDtoSchema,
+  type UploadResult,
+} from '@shared/dtos';
+import {
   ListAvatarsResponseDtoSchema,
   GetAvatarResponseDtoSchema,
   CreateAvatarResponseDtoSchema,
@@ -14,9 +20,58 @@ import {
   type AnalyzeAvatarErrorDto,
   type AnalyzeAvatarResponseDto,
 } from '@shared/dtos/avatar';
-import { z } from 'zod';
+import { apiErrorSchema } from '@shared/api-response';
 
 const credentials: RequestCredentials = 'include';
+
+const ApiErrorResponseSchema = apiErrorSchema();
+
+function parseErrorResponse(raw: unknown, fallbackMessage: string): never {
+  const parsed = ApiErrorResponseSchema.safeParse(raw);
+  const message = parsed.success ? parsed.data.error.message : fallbackMessage;
+  throw new Error(message || fallbackMessage);
+}
+
+// --- App bootstrap & auth (for loaders) ---
+
+export type { UploadResult };
+
+/** GET /api/app/bootstrap. Returns data or { status: 401 } for redirect. */
+export async function getAppBootstrap(): Promise<{ avatarExists: boolean } | { status: 401 }> {
+  const res = await fetch('/api/app/bootstrap', { credentials });
+  if (res.status === 401) return { status: 401 };
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Bootstrap failed');
+  const parsed = AppBootstrapResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Response('Invalid bootstrap response', { status: 502 });
+  return { avatarExists: parsed.data.data.avatarExists };
+}
+
+/** GET /api/me. Throws on non-2xx (e.g. 401). */
+export async function getMe(): Promise<{ userId: string; email: string }> {
+  const res = await fetch('/api/me', { credentials });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Unauthorized');
+  const parsed = MeResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid me response');
+  return parsed.data.data;
+}
+
+/** POST /api/uploads with FormData (file). Returns upload result. */
+export async function uploadFile(file: File): Promise<UploadResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch('/api/uploads', {
+    method: 'POST',
+    credentials,
+    body: formData,
+  });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, `Upload failed (${res.status})`);
+  const parsed = UploadResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid upload response');
+  return parsed.data.data;
+}
 
 // Re-export for consumers
 export type Avatar = AvatarDto;
@@ -47,10 +102,7 @@ export async function createAvatar(params: CreateAvatarParams): Promise<CreateAv
     }),
   });
   const raw = await res.json();
-  if (!res.ok) {
-    const err = z.object({ error: z.string().optional() }).safeParse(raw);
-    throw new Error(err.success ? (err.data.error ?? 'Create failed') : 'Create failed');
-  }
+  if (!res.ok) parseErrorResponse(raw, 'Create failed');
   const parsed = CreateAvatarResponseDtoSchema.safeParse(raw);
   if (!parsed.success) throw new Error('Invalid create avatar response');
   return parsed.data;
@@ -74,12 +126,6 @@ export async function analyzeAvatar({
     }
     throw new Error('Invalid analyze response');
   }
-  if (parsed.data.ok === false && res.ok) {
-    return parsed.data;
-  }
-  if (parsed.data.ok === false) {
-    return parsed.data;
-  }
   return parsed.data;
 }
 
@@ -101,10 +147,7 @@ export async function updateAvatar({
     body: JSON.stringify(body),
   });
   const raw = await res.json();
-  if (!res.ok) {
-    const err = z.object({ error: z.string().optional() }).safeParse(raw);
-    throw new Error(err.success ? (err.data.error ?? 'Update failed') : 'Update failed');
-  }
+  if (!res.ok) parseErrorResponse(raw, 'Update failed');
   const parsed = UpdateAvatarResponseDtoSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error('Invalid update avatar response');
@@ -115,31 +158,23 @@ export async function updateAvatar({
 export async function listAvatars(): Promise<Avatar[]> {
   const res = await fetch('/api/avatars', { credentials });
   const raw = await res.json();
-  if (!res.ok) {
-    const err = z.object({ error: z.string().optional() }).safeParse(raw);
-    throw new Error(
-      err.success ? (err.data.error ?? 'Failed to load avatars') : 'Failed to load avatars'
-    );
-  }
+  if (!res.ok) parseErrorResponse(raw, 'Failed to load avatars');
   const parsed = ListAvatarsResponseDtoSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error('Invalid list avatars response');
   }
-  return parsed.data.avatars;
+  return parsed.data.data.avatars;
 }
 
 export async function getAvatar(avatarId: string): Promise<Avatar> {
   const res = await fetch(`/api/avatars/${encodeURIComponent(avatarId)}`, { credentials });
   const raw = await res.json();
-  if (!res.ok) {
-    const err = z.object({ error: z.string().optional() }).safeParse(raw);
-    throw new Error(err.success ? (err.data.error ?? 'Avatar not found') : 'Avatar not found');
-  }
+  if (!res.ok) parseErrorResponse(raw, 'Avatar not found');
   const parsed = GetAvatarResponseDtoSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error('Invalid get avatar response');
   }
-  return parsed.data.avatar;
+  return parsed.data.data.avatar;
 }
 
 export async function deleteAvatar(avatarId: string): Promise<{ deletedOutfitsCount: number }> {
@@ -148,13 +183,10 @@ export async function deleteAvatar(avatarId: string): Promise<{ deletedOutfitsCo
     credentials,
   });
   const raw = await res.json();
-  if (!res.ok) {
-    const err = z.object({ error: z.string().optional() }).safeParse(raw);
-    throw new Error(err.success ? (err.data.error ?? 'Delete failed') : 'Delete failed');
-  }
+  if (!res.ok) parseErrorResponse(raw, 'Delete failed');
   const parsed = DeleteAvatarResponseDtoSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error('Invalid delete avatar response');
   }
-  return { deletedOutfitsCount: parsed.data.deletedOutfitsCount };
+  return parsed.data.data;
 }
