@@ -12,6 +12,7 @@ async function main() {
   const server = serve({
     port,
     hostname: '0.0.0.0',
+    idleTimeout: 180,
     routes: getRoutes(),
 
     development: process.env.NODE_ENV !== 'production' && {

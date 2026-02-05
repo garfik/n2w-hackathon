@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@components/ui/card';
 import { Button } from '@components/ui/button';
@@ -14,7 +13,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@components/ui/alert-dialog';
-import { listAvatars, deleteAvatar, type Avatar } from '@client/lib/n2wApi';
+import { useAvatars, useDeleteAvatar } from '@client/lib/apiHooks';
+import type { Avatar } from '@client/lib/n2wApi';
 
 function getAvatarImageUrl(photoUploadId: string | null): string | null {
   if (!photoUploadId) return null;
@@ -22,35 +22,13 @@ function getAvatarImageUrl(photoUploadId: string | null): string | null {
 }
 
 export function AvatarsListPage() {
-  const [avatars, setAvatars] = useState<Avatar[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+  const { data: avatars, error, isPending } = useAvatars();
+  const deleteMutation = useDeleteAvatar();
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await listAvatars();
-        if (!cancelled) setAvatars(data);
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleDelete = async (avatarId: string) => {
-    setDeleteLoading(avatarId);
-    try {
-      await deleteAvatar(avatarId);
-      setAvatars((prev) => prev?.filter((a) => a.id !== avatarId) ?? null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Delete failed');
-    } finally {
-      setDeleteLoading(null);
-    }
+  const handleDelete = (avatarId: string) => {
+    deleteMutation.mutate(avatarId, {
+      onSuccess: () => {},
+    });
   };
 
   if (error) {
@@ -58,7 +36,7 @@ export function AvatarsListPage() {
       <div className="max-w-4xl mx-auto">
         <Card>
           <CardContent className="pt-6">
-            <p className="text-destructive">{error}</p>
+            <p className="text-destructive">{error.message}</p>
           </CardContent>
         </Card>
       </div>
@@ -77,7 +55,7 @@ export function AvatarsListPage() {
         </Button>
       </div>
 
-      {avatars === null ? (
+      {isPending ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
             <Card key={i}>
@@ -91,7 +69,7 @@ export function AvatarsListPage() {
             </Card>
           ))}
         </div>
-      ) : avatars.length === 0 ? (
+      ) : !avatars?.length ? (
         <Card>
           <CardHeader>
             <CardTitle>No avatars yet</CardTitle>
@@ -107,9 +85,9 @@ export function AvatarsListPage() {
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {avatars.map((avatar) => {
+          {avatars.map((avatar: Avatar) => {
             const imageUrl = getAvatarImageUrl(avatar.photoUploadId);
-            const isDeleting = deleteLoading === avatar.id;
+            const isDeleting = deleteMutation.isPending && deleteMutation.variables === avatar.id;
 
             return (
               <Card key={avatar.id} className="relative transition-all hover:shadow-md">

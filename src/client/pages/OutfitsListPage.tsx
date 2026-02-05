@@ -1,44 +1,14 @@
-import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@components/ui/card';
 import { Button } from '@components/ui/button';
 import { Badge } from '@components/ui/badge';
 import { Skeleton } from '@components/ui/skeleton';
-import { getAvatar, type Avatar } from '@client/lib/n2wApi';
-
-type Outfit = { id: string; avatarId: string; occasion: string; createdAt: string };
+import { useAvatar, useOutfitsList } from '@client/lib/apiHooks';
 
 export function OutfitsListPage() {
   const { avatarId } = useParams<{ avatarId: string }>();
-  const [outfits, setOutfits] = useState<Outfit[] | null>(null);
-  const [avatar, setAvatar] = useState<Avatar | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!avatarId) return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        // Load avatar info
-        const avatarData = await getAvatar(avatarId);
-        if (!cancelled) setAvatar(avatarData);
-
-        // Load outfits for this avatar
-        const url = new URL('/api/outfits', window.location.origin);
-        url.searchParams.set('avatarId', avatarId);
-        const res = await fetch(url.toString(), { credentials: 'include' });
-        if (!res.ok) throw new Error('Failed to load outfits');
-        const data = (await res.json()) as { success: boolean; data?: { outfits?: Outfit[] } };
-        if (!cancelled && data.data?.outfits) setOutfits(data.data.outfits);
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [avatarId]);
+  const { data: avatar } = useAvatar(avatarId);
+  const { data: outfits, error, isPending } = useOutfitsList(avatarId);
 
   if (!avatarId) {
     return (
@@ -63,7 +33,7 @@ export function OutfitsListPage() {
       <div className="max-w-2xl">
         <Card>
           <CardContent className="pt-6">
-            <p className="text-destructive">{error}</p>
+            <p className="text-destructive">{error.message}</p>
           </CardContent>
         </Card>
       </div>
@@ -93,7 +63,7 @@ export function OutfitsListPage() {
           <Link to={`/app/avatars/${avatarId}/outfits/new`}>New outfit</Link>
         </Button>
       </div>
-      {outfits === null ? (
+      {isPending ? (
         <div className="grid gap-4 sm:grid-cols-2">
           {[1, 2, 3].map((i) => (
             <Card key={i}>
@@ -107,7 +77,7 @@ export function OutfitsListPage() {
             </Card>
           ))}
         </div>
-      ) : outfits.length === 0 ? (
+      ) : !outfits?.length ? (
         <Card>
           <CardHeader>
             <CardTitle>No outfits yet</CardTitle>

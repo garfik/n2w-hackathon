@@ -190,3 +190,39 @@ export async function deleteAvatar(avatarId: string): Promise<{ deletedOutfitsCo
   }
   return parsed.data.data;
 }
+
+// --- Outfits (minimal types, no shared DTO yet) ---
+
+export type OutfitListItem = { id: string; avatarId: string; occasion: string; createdAt: string };
+
+export type OutfitDetailGarment = { id: string; name: string; thumbnailUrl: string | null };
+export type OutfitDetail = {
+  id: string;
+  occasion: string;
+  resultImageUrl: string | null;
+  scoreJson: unknown;
+  garments: OutfitDetailGarment[];
+};
+
+export async function listOutfits(avatarId: string): Promise<OutfitListItem[]> {
+  const url = new URL('/api/outfits', window.location.origin);
+  url.searchParams.set('avatarId', avatarId);
+  const res = await fetch(url.toString(), { credentials });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Failed to load outfits');
+  const data = raw as { success?: boolean; data?: { outfits?: OutfitListItem[] } };
+  if (!data.data?.outfits) return [];
+  return data.data.outfits;
+}
+
+export async function getOutfit(outfitId: string): Promise<OutfitDetail> {
+  const res = await fetch(`/api/outfits/${encodeURIComponent(outfitId)}`, { credentials });
+  const raw = await res.json();
+  if (!res.ok) {
+    if (res.status === 404) throw new Error('Outfit not found');
+    parseErrorResponse(raw, 'Failed to load outfit');
+  }
+  const data = raw as { success?: boolean; data?: { outfit?: OutfitDetail } };
+  if (!data.data?.outfit) throw new Error('Invalid outfit response');
+  return data.data.outfit;
+}

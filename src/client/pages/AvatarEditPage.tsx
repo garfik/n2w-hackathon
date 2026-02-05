@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@components/ui/select';
-import { getAvatar, updateAvatar, type Avatar } from '@client/lib/n2wApi';
+import { useAvatar, useUpdateAvatar } from '@client/lib/apiHooks';
 import type { AvatarBodyProfile, AvatarBodyProfileClean } from '@shared/dtos/avatar';
 
 /** Strip AI metadata (confidence, issues) from body profile before saving */
@@ -114,44 +114,19 @@ function getAvatarImageUrl(photoUploadId: string | null): string | null {
 export function AvatarEditPage() {
   const { avatarId } = useParams<{ avatarId: string }>();
   const navigate = useNavigate();
-  const [avatar, setAvatar] = useState<Avatar | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [saveLoading, setSaveLoading] = useState(false);
+  const { data: avatar, isPending, error: queryError } = useAvatar(avatarId);
+  const updateMutation = useUpdateAvatar();
 
   const [avatarName, setAvatarName] = useState('');
   const [heightCm, setHeightCm] = useState<number | ''>('');
   const [formProfile, setFormProfile] = useState<AvatarBodyProfile | null>(null);
 
   useEffect(() => {
-    if (!avatarId) {
-      setError('Missing avatar ID');
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await getAvatar(avatarId);
-        if (cancelled) return;
-        setAvatar(data);
-        setAvatarName(data.name);
-        setHeightCm(data.heightCm ?? '');
-        if (data.bodyProfileJson) {
-          setFormProfile(data.bodyProfileJson as AvatarBodyProfile);
-        }
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load avatar');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [avatarId]);
+    if (!avatar) return;
+    setAvatarName(avatar.name);
+    setHeightCm(avatar.heightCm ?? '');
+    setFormProfile(avatar.bodyProfileJson ? (avatar.bodyProfileJson as AvatarBodyProfile) : null);
+  }, [avatar]);
 
   const updateFormField = <K extends keyof AvatarBodyProfile>(
     key: K,
@@ -160,28 +135,23 @@ export function AvatarEditPage() {
     setFormProfile((prev) => (prev ? { ...prev, [key]: value } : null));
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!avatarId) return;
-    setSaveLoading(true);
-    try {
-      const height =
-        typeof heightCm === 'number' && Number.isFinite(heightCm) ? heightCm : undefined;
-      // Strip confidence and issues before saving - only store clean data
-      await updateAvatar({
+    const height = typeof heightCm === 'number' && Number.isFinite(heightCm) ? heightCm : undefined;
+    updateMutation.mutate(
+      {
         avatarId,
         name: avatarName.trim() || undefined,
         bodyProfileJson: formProfile ? toCleanProfile(formProfile) : undefined,
         heightCm: height,
-      });
-      navigate(`/app/avatars/${avatarId}/outfits`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save failed');
-    } finally {
-      setSaveLoading(false);
-    }
+      },
+      { onSuccess: () => navigate(`/app/avatars/${avatarId}/outfits`) }
+    );
   };
 
-  if (loading) {
+  const error = queryError?.message ?? updateMutation.error?.message ?? null;
+
+  if (isPending) {
     return (
       <div className="max-w-4xl mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -208,7 +178,7 @@ export function AvatarEditPage() {
     );
   }
 
-  if (error || !avatar) {
+  if (queryError || (!isPending && !avatar)) {
     return (
       <div className="max-w-4xl mx-auto">
         <Card>
@@ -646,8 +616,8 @@ export function AvatarEditPage() {
           )}
 
           <div className="flex gap-2">
-            <Button onClick={handleSave} disabled={saveLoading} className="flex-1">
-              {saveLoading ? 'Saving...' : 'Save changes'}
+            <Button onClick={handleSave} disabled={updateMutation.isPending} className="flex-1">
+              {updateMutation.isPending ? 'Saving...' : 'Save changes'}
             </Button>
             <Button variant="outline" asChild>
               <Link to={`/app/avatars/${avatarId}/outfits`}>Cancel</Link>
