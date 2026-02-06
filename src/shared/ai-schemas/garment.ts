@@ -1,15 +1,8 @@
 import { z } from 'zod';
 
-// ─── Detection (one image → many detections) ─────────────────────────────────
+// ─── Detection: single source of truth for prompt + schema ────────────────────
 
-const BboxNormSchema = z.object({
-  x: z.number(),
-  y: z.number(),
-  w: z.number(),
-  h: z.number(),
-});
-
-const CategorySchema = z.enum([
+export const DETECT_CATEGORIES = [
   'top',
   'shirt',
   'jacket',
@@ -18,44 +11,88 @@ const CategorySchema = z.enum([
   'skirt',
   'dress',
   'shoes',
-  'bag',
-  'accessory',
-  'other',
-]);
+  'headwear',
+] as const;
 
-/** Optional garment profile returned per detection by vision model. */
-export const DetectionGarmentProfileSchema = z
-  .object({
-    category: CategorySchema.optional(),
-    silhouette: z.enum(['slim', 'straight', 'oversized', 'unknown']).optional(),
-    length_class: z.enum(['cropped', 'regular', 'long', 'maxi', 'unknown']).optional(),
-    fit_intent: z.enum(['tight', 'regular', 'oversized', 'unknown']).optional(),
-    neckline: z.enum(['crew', 'v_neck', 'square', 'turtleneck', 'collared', 'unknown']).optional(),
-    sleeve: z.enum(['sleeveless', 'short', 'long', 'unknown']).optional(),
-    rise: z.enum(['low', 'mid', 'high', 'unknown']).optional(),
-    primary_colors: z.array(z.string()).max(3).optional(),
-    pattern: z.enum(['solid', 'stripe', 'check', 'print', 'unknown']).optional(),
-    material_guess: z
-      .enum(['denim', 'knit', 'cotton', 'leather', 'synthetic', 'unknown'])
-      .optional(),
-    formality: z.enum(['casual', 'smart_casual', 'formal', 'unknown']).optional(),
-    seasonality: z.enum(['summer', 'winter', 'all_season', 'unknown']).optional(),
-    attention_zones: z.array(z.enum(['shoulders', 'waist', 'hips', 'legs'])).optional(),
-    confidence: z.number().min(0).max(1).optional(),
-    issues: z.array(z.string()).optional(),
-  })
-  .passthrough();
+export const DETECT_SILHOUETTES = ['slim', 'straight', 'regular', 'oversized', 'unknown'] as const;
+export const DETECT_LENGTH_CLASS = [
+  'cropped',
+  'short',
+  'regular',
+  'long',
+  'maxi',
+  'unknown',
+] as const;
+export const DETECT_FIT_INTENT = ['tight', 'regular', 'oversized', 'unknown'] as const;
+export const DETECT_NECKLINE = [
+  'crew',
+  'v_neck',
+  'square',
+  'turtleneck',
+  'collared',
+  'unknown',
+] as const;
+export const DETECT_SLEEVE = ['sleeveless', 'short', 'long', 'unknown'] as const;
+export const DETECT_RISE = ['low', 'mid', 'high', 'unknown'] as const;
+export const DETECT_PATTERN = ['solid', 'stripe', 'check', 'print', 'unknown'] as const;
+export const DETECT_MATERIAL = [
+  'denim',
+  'knit',
+  'cotton',
+  'leather',
+  'synthetic',
+  'unknown',
+] as const;
+export const DETECT_FORMALITY = ['casual', 'smart_casual', 'formal', 'unknown'] as const;
+export const DETECT_SEASONALITY = ['summer', 'winter', 'all_season', 'unknown'] as const;
+export const DETECT_ATTENTION_ZONES = ['shoulders', 'waist', 'hips', 'legs'] as const;
+
+export const DETECT_MAX_DETECTIONS = 10;
+export const DETECT_LABEL_MAX_LENGTH = 80;
+export const DETECT_STYLE_TAGS_MAX = 6;
+export const DETECT_PRIMARY_COLORS_MAX = 3;
+
+// ─── Detection schemas (must stay in sync with DETECT_* constants) ───────────
+
+const BboxNormSchema = z.object({
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  w: z.number().min(0).max(1),
+  h: z.number().min(0).max(1),
+});
+
+const CategorySchema = z.enum(DETECT_CATEGORIES);
+
+export const DetectionGarmentProfileSchema = z.object({
+  category: CategorySchema.optional(),
+  silhouette: z.enum(DETECT_SILHOUETTES).optional(),
+  length_class: z.enum(DETECT_LENGTH_CLASS).optional(),
+  fit_intent: z.enum(DETECT_FIT_INTENT).optional(),
+  neckline: z.enum(DETECT_NECKLINE).optional(),
+  sleeve: z.enum(DETECT_SLEEVE).optional(),
+  rise: z.enum(DETECT_RISE).optional(),
+  primary_colors: z.array(z.string()).max(DETECT_PRIMARY_COLORS_MAX).optional(),
+  pattern: z.enum(DETECT_PATTERN).optional(),
+  material_guess: z.enum(DETECT_MATERIAL).optional(),
+  formality: z.enum(DETECT_FORMALITY).optional(),
+  seasonality: z.enum(DETECT_SEASONALITY).optional(),
+  attention_zones: z.array(z.enum(DETECT_ATTENTION_ZONES)).optional(),
+  style_family: z.string().optional(),
+  style_tags: z.array(z.string()).max(DETECT_STYLE_TAGS_MAX).optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  issues: z.array(z.string()).optional(),
+});
 
 export const GarmentDetectionItemSchema = z.object({
   bbox: BboxNormSchema,
   category: CategorySchema,
-  label: z.string(),
-  confidence: z.number(),
+  label: z.string().max(DETECT_LABEL_MAX_LENGTH),
+  confidence: z.number().min(0).max(1),
   garment_profile: DetectionGarmentProfileSchema.optional(),
 });
 
 export const DetectGarmentsResultSchema = z.object({
-  detections: z.array(GarmentDetectionItemSchema).max(20),
+  detections: z.array(GarmentDetectionItemSchema).max(DETECT_MAX_DETECTIONS),
 });
 
 export type GarmentDetectionItem = z.infer<typeof GarmentDetectionItemSchema>;

@@ -28,22 +28,11 @@ import {
 } from '@client/lib/apiHooks';
 import type { GarmentListItem } from '@client/lib/n2wApi';
 import type { DetectionItem } from '@shared/dtos/garment';
+import { DETECT_CATEGORIES } from '@shared/ai-schemas/garment';
 import { Loader2, Plus, CheckSquare, Square } from 'lucide-react';
 import { cn } from '@client/lib/utils';
 
-const CATEGORY_OPTIONS = [
-  'top',
-  'shirt',
-  'jacket',
-  'coat',
-  'pants',
-  'jeans',
-  'skirt',
-  'dress',
-  'shorts',
-  'shoes',
-  'other',
-];
+const CATEGORY_OPTIONS = [...DETECT_CATEGORIES];
 
 function GarmentCard({ g }: { g: GarmentListItem }) {
   return (

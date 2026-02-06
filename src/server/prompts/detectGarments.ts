@@ -1,99 +1,137 @@
 /**
  * Garment detection from a single image: ONE AI call returns array of detections.
  * Uses Gemini vision + structured prompt; output validated with Zod.
+ * Prompt enum values are generated from @shared/ai-schemas/garment so they stay in sync.
  */
 
 import { generateJson, type ImageInput } from '@server/lib/gemini';
-import { DetectGarmentsResultSchema, type DetectGarmentsResult } from '@shared/ai-schemas/garment';
+import {
+  DetectGarmentsResultSchema,
+  type DetectGarmentsResult,
+  DETECT_CATEGORIES,
+  DETECT_SILHOUETTES,
+  DETECT_LENGTH_CLASS,
+  DETECT_FIT_INTENT,
+  DETECT_NECKLINE,
+  DETECT_SLEEVE,
+  DETECT_RISE,
+  DETECT_PATTERN,
+  DETECT_MATERIAL,
+  DETECT_FORMALITY,
+  DETECT_SEASONALITY,
+  DETECT_ATTENTION_ZONES,
+  DETECT_MAX_DETECTIONS,
+  DETECT_LABEL_MAX_LENGTH,
+  DETECT_STYLE_TAGS_MAX,
+  DETECT_PRIMARY_COLORS_MAX,
+} from '@shared/ai-schemas/garment';
 
 export const GARMENT_DETECTION_MODEL = 'gemini-2.5-flash';
 
-const DETECT_GARMENTS_PROMPT = `You are a computer vision clothing detection and attribute extraction system.
+const categoryList = DETECT_CATEGORIES.join('|');
+const silhouetteList = DETECT_SILHOUETTES.map((s) => `"${s}"`).join(' | ');
+const lengthClassList = DETECT_LENGTH_CLASS.map((s) => `"${s}"`).join(' | ');
+const fitIntentList = DETECT_FIT_INTENT.map((s) => `"${s}"`).join(' | ');
+const necklineList = DETECT_NECKLINE.map((s) => `"${s}"`).join(' | ');
+const sleeveList = DETECT_SLEEVE.map((s) => `"${s}"`).join(' | ');
+const riseList = DETECT_RISE.map((s) => `"${s}"`).join(' | ');
+const patternList = DETECT_PATTERN.map((s) => `"${s}"`).join(' | ');
+const materialList = DETECT_MATERIAL.map((s) => `"${s}"`).join(' | ');
+const formalityList = DETECT_FORMALITY.map((s) => `"${s}"`).join(' | ');
+const seasonalityList = DETECT_SEASONALITY.map((s) => `"${s}"`).join(' | ');
+const attentionZonesList = DETECT_ATTENTION_ZONES.map((s) => `"${s}"`).join(' | ');
 
-TASK
-Given ONE photo that may contain multiple garments (e.g., outfit laid out, wardrobe photo, influencer photo),
-detect each DISTINCT wearable item and return a JSON object with an array of detections.
+export const DETECT_GARMENTS_PROMPT = `You are a computer vision clothing detection and attribute extraction system.
 
-CRITICAL RULES
-- Return ONLY valid JSON. No markdown. No code fences. No extra text.
-- Use NORMALIZED bounding boxes (0..1) relative to the full image size.
-- ONE call must return ALL detections. Do NOT ask for more images.
-- Do NOT output pixel coordinates.
-- If uncertain, LOWER confidence and include issues (inside garment_profile if present).
+GOAL
+Detect only the main wardrobe items in ONE photo (flat lay or outfit on a person) and return structured data suitable for outfit scoring.
 
-WHAT COUNTS AS A "GARMENT"
-Include individual wearable items:
-- tops/shirts/jackets
-- bottoms (pants/shorts/skirts)
-- dresses
-- shoes
-- bags
-- accessories (only if clearly visible and meaningful; otherwise omit)
-Do NOT include: faces, bodies, background objects, furniture, walls, text overlays, logos only.
+ALLOWED ITEMS (ONLY)
+- Upper body: top, shirt, jacket
+- Lower body: pants, shorts, skirt, dress
+- Footwear: shoes (only if clearly visible)
+- Headwear: headwear (only if clearly visible)
 
-DE-DUPLICATION / EDGE CASES
-- If the same garment appears twice due to mirror/reflection, return ONE detection for the primary instance.
-- If multiple garments overlap heavily and cannot be separated reliably:
-  - return ONE detection with category="other"
-  - lower confidence
-  - explain ambiguity in issues.
+If an item is NOT one of the allowed categories or you are not confident, DO NOT return it.
 
-CATEGORY (choose exactly one)
-top, shirt, jacket, pants, shorts, skirt, dress, shoes, bag, accessory, other
+EXPLICITLY IGNORE (never return)
+- socks, underwear, lingerie
+- watches, jewelry, rings, necklaces, bracelets
+- belts, ties, scarves, gloves
+- bags/backpacks, wallets
+- sunglasses, phones, headphones
+- tiny accessories or unclear small items
+- faces, bodies as objects, background/furniture/walls
+- text overlays, logos-only regions
 
-BOUNDING BOX FORMAT
-bbox = { x, y, w, h }
-- x,y = top-left corner
-- w,h = width and height
-- all values must be numbers in [0, 1]
-- boxes must be clamped within image bounds
-- avoid tiny boxes (w*h < 0.01) unless it is a clear accessory
+OUTPUT FORMAT (STRICT)
+Return ONLY valid JSON. No markdown. No code fences. No extra text.
 
-GARMENT PROFILE (optional but preferred when possible)
-If you can reasonably infer attributes for a detection, include a garment_profile object with ONLY these keys:
-{
-  "category": "dress|top|shirt|jacket|pants|shorts|skirt|shoes|bag|accessory|other",
-  "silhouette": "slim" | "straight" | "oversized" | "unknown",
-  "length_class": "cropped" | "regular" | "long" | "maxi" | "unknown",
-  "fit_intent": "tight" | "regular" | "oversized" | "unknown",
-  "neckline": "crew" | "v_neck" | "square" | "turtleneck" | "collared" | "unknown",
-  "sleeve": "sleeveless" | "short" | "long" | "unknown",
-  "rise": "low" | "mid" | "high" | "unknown",
-  "primary_colors": string[] (max 3, simple color words like "black", "white", "navy", "beige"),
-  "pattern": "solid" | "stripe" | "check" | "print" | "unknown",
-  "material_guess": "denim" | "knit" | "cotton" | "leather" | "synthetic" | "unknown",
-  "formality": "casual" | "smart_casual" | "formal" | "unknown",
-  "seasonality": "summer" | "winter" | "all_season" | "unknown",
-  "attention_zones": ("shoulders" | "waist" | "hips" | "legs")[],
-  "confidence": number (0..1),
-  "issues": string[]
-}
-
-IMPORTANT:
-- If you cannot infer a field, set it to "unknown" (for enums) or omit the entire garment_profile.
-- Do NOT invent brands, prices, or product IDs.
-- garment_profile.confidence is your overall confidence about the garment_profile (not bbox).
-
-OUTPUT JSON (STRICT)
-Return EXACTLY this shape:
+You MUST return exactly:
 {
   "detections": [
     {
-      "bbox": { "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0 },
-      "category": "top|shirt|jacket|pants|shorts|skirt|dress|shoes|bag|accessory|other",
-      "label": "short human-readable label (max 80 chars)",
-      "confidence": 0.0,
+      "bbox": { "x": 0..1, "y": 0..1, "w": 0..1, "h": 0..1 },
+      "category": "${categoryList}",
+      "label": "short user-facing label (<=${DETECT_LABEL_MAX_LENGTH} chars)",
+      "confidence": 0..1,
       "garment_profile": { ... } // optional
     }
   ]
 }
 
-QUALITY RULES
-- Prefer fewer, higher-quality detections over many noisy ones.
-- Return at most 20 detections.
+FIELD MEANINGS (for you; do NOT output this text)
+- detections: array of distinct garments detected in the image
+- bbox: normalized bounding box (top-left origin). x,y are top-left; w,h are width/height.
+- category: one of allowed categories only.
+- label: short label like "black hoodie", "blue jeans", "white shirt", "black sneakers".
+- confidence: your confidence that the detection is correct (bbox+category+label).
+- garment_profile: optional detailed attributes. If uncertain, use "unknown" or omit garment_profile entirely.
+
+BOUNDING BOX RULES
+- Use NORMALIZED coordinates (0..1), NOT pixels.
+- bbox must stay within image bounds (clamp if needed).
+- Ignore tiny/unclear items:
+  - clothing categories (top/shirt/jacket/pants/shorts/skirt/dress): ignore if area (w*h) < 0.02
+  - shoes/headwear: ignore if area (w*h) < 0.03
+- If wearing layers (person photo):
+  - Prefer OUTERMOST upper layer (e.g., jacket/coat over shirt).
+  - You MAY include a second upper item only if clearly separable and not noisy.
+
+STYLE OUTPUT (brand_style + tags)
+Inside garment_profile, add:
+- style_family: a broad style family label that feels like a brand aesthetic (e.g., "streetwear", "minimal", "athleisure", "workwear", "preppy", "formal", "boho", "classic", "sporty", "techwear", "y2k", "romantic", "edgy", "outdoor").
+- style_tags: 2–${DETECT_STYLE_TAGS_MAX} short tags that describe the vibe/features (e.g., "oversized", "cropped", "clean lines", "chunky sole", "tailored", "vintage", "sleek", "cozy", "utility", "high contrast").
+If you are not confident, use style_family="unknown" and style_tags=[].
+
+GARMENT PROFILE (optional but preferred when possible)
+If you can reasonably infer attributes for a detection, include garment_profile with ONLY these keys:
+{
+  "category": "${categoryList}",
+  "silhouette": ${silhouetteList},
+  "length_class": ${lengthClassList},
+  "fit_intent": ${fitIntentList},
+  "neckline": ${necklineList},
+  "sleeve": ${sleeveList},
+  "rise": ${riseList},
+  "primary_colors": string[] (max ${DETECT_PRIMARY_COLORS_MAX}, simple color words like "black","white","navy","beige"),
+  "pattern": ${patternList},
+  "material_guess": ${materialList},
+  "formality": ${formalityList},
+  "seasonality": ${seasonalityList},
+  "attention_zones": (${attentionZonesList})[],
+  "style_family": string,        // use "unknown" if unsure
+  "style_tags": string[],        // 2–${DETECT_STYLE_TAGS_MAX} tags, or [] if unsure
+  "confidence": number (0..1),   // confidence in garment_profile only
+  "issues": string[]             // ambiguities (lighting, occlusion, overlap, etc.)
+}
+
+IMPORTANT RULES
+- If you cannot infer a field, set it to "unknown" or leave arrays empty.
+- Do NOT invent brands, prices, product IDs, or model names.
 - Sort detections by confidence descending.
-- If no garments are clearly detectable, return:
-  { "detections": [] }
+- Return at most ${DETECT_MAX_DETECTIONS} detections.
+- If no relevant garments are clearly detectable, return: { "detections": [] }.
 
 Now analyze the image and output JSON only.`;
 
