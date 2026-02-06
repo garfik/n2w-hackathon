@@ -85,7 +85,8 @@ export type GenerateJsonOptions<S extends z.ZodTypeAny> = GenerateOptions & {
 
 /**
  * Calls Gemini, parses JSON response, validates with Zod schema.
- * Retries on 429/5xx/network errors.
+ * Retries on 429/5xx/network errors and on parse/schema validation errors
+ * (up to MAX_RETRIES; on retry appends a strict-schema reminder to the prompt).
  */
 export async function generateJson<S extends z.ZodTypeAny>(
   options: GenerateJsonOptions<S>
@@ -109,9 +110,14 @@ export async function generateJson<S extends z.ZodTypeAny>(
     try {
       const ai = getClient();
 
+      const promptText =
+        attempt > 0
+          ? `${prompt}\n\n[RETRY] Your previous response failed schema validation. Return ONLY valid JSON that strictly matches the required structure and allowed enum values. No other values are accepted.`
+          : prompt;
+
       // Build contents: text + optional images
       const contents: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> =
-        [{ text: prompt }];
+        [{ text: promptText }];
 
       if (images?.length) {
         for (const img of images) {
@@ -153,9 +159,18 @@ export async function generateJson<S extends z.ZodTypeAny>(
       clearTimeout(timeout);
       const latencyMs = Date.now() - start;
 
-      // Don't retry parse errors - they won't fix themselves
       if (err instanceof GeminiParseError) {
         log.warn({ requestId, latencyMs, error: err.message }, 'parse_error');
+        if (attempt < MAX_RETRIES) {
+          const backoff = delayMs(attempt);
+          log.warn(
+            { requestId, attempt: attempt + 1, retryInMs: backoff, latencyMs },
+            'parse_error retry'
+          );
+          await new Promise((r) => setTimeout(r, backoff));
+          lastError = err;
+          continue;
+        }
         throw err;
       }
 
