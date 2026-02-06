@@ -11,12 +11,14 @@ import { AvatarEditPage } from './pages/AvatarEditPage';
 import { OutfitsListPage } from './pages/OutfitsListPage';
 import { OutfitNewPage } from './pages/OutfitNewPage';
 import { OutfitDetailPage } from './pages/OutfitDetailPage';
+import { GarmentsListPage } from './pages/GarmentsListPage';
 
 async function appBootstrapLoader({ request }: LoaderFunctionArgs) {
   const result = await getAppBootstrap();
   if ('status' in result) return redirect('/login');
   const pathname = new URL(request.url).pathname;
-  if (!result.avatarExists && pathname !== '/app/avatars/new') {
+  const allowedWithoutAvatar = ['/app/avatars/new', '/app/garments'];
+  if (!result.avatarExists && !allowedWithoutAvatar.some((p) => pathname === p)) {
     return redirect('/app/avatars/new');
   }
   return { avatarExists: result.avatarExists };
@@ -57,6 +59,7 @@ export const router = createBrowserRouter([
       { path: 'avatars/:avatarId/outfits', element: <OutfitsListPage /> },
       { path: 'avatars/:avatarId/outfits/new', element: <OutfitNewPage /> },
       { path: 'avatars/:avatarId/outfits/:outfitId', element: <OutfitDetailPage /> },
+      { path: 'garments', element: <GarmentsListPage /> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

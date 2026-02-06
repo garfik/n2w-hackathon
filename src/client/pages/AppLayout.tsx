@@ -21,6 +21,12 @@ export function AppLayout() {
             <Link to="/app/avatars" className="text-sm text-muted-foreground hover:text-foreground">
               Avatars
             </Link>
+            <Link
+              to="/app/garments"
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              Garments
+            </Link>
           </div>
           <Button variant="outline" size="sm" onClick={handleLogout}>
             Log out

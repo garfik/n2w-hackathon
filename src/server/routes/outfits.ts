@@ -5,8 +5,9 @@ import { outfit, outfitGarment, avatar, garment } from '../../db/domain.schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { apiOk, apiErr } from './response';
 
-function thumbnailUrl(key: string): string {
-  return `/api/storage/object?key=${encodeURIComponent(key)}`;
+/** Garment image URL via upload (uploads.id). */
+function garmentImageUrl(uploadId: string): string {
+  return `/api/uploads/${uploadId}/image`;
 }
 
 export const outfitsRoutes = router({
@@ -124,7 +125,7 @@ export const outfitsRoutes = router({
       .select({
         id: garment.id,
         name: garment.name,
-        originalImageKey: garment.originalImageKey,
+        uploadId: garment.uploadId,
       })
       .from(outfitGarment)
       .innerJoin(garment, eq(outfitGarment.garmentId, garment.id))
@@ -133,7 +134,7 @@ export const outfitsRoutes = router({
     const garments = garmentRows.map((g) => ({
       id: g.id,
       name: g.name,
-      thumbnailUrl: g.originalImageKey ? thumbnailUrl(g.originalImageKey) : null,
+      thumbnailUrl: garmentImageUrl(g.uploadId),
     }));
 
     return apiOk({
@@ -143,7 +144,9 @@ export const outfitsRoutes = router({
         resultImageKey: outfitRow.resultImageKey,
         scoreJson: outfitRow.scoreJson,
         garments,
-        resultImageUrl: outfitRow.resultImageKey ? thumbnailUrl(outfitRow.resultImageKey) : null,
+        resultImageUrl: outfitRow.resultImageKey
+          ? `/api/storage/object?key=${encodeURIComponent(outfitRow.resultImageKey)}`
+          : null,
       },
     });
   },

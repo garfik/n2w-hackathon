@@ -1,47 +1,299 @@
+import { eq, and, inArray, desc } from 'drizzle-orm';
 import { router } from './router';
 import { requireUser } from '../lib/requireUser';
 import { db } from '../../db/client';
-import { garment } from '../../db/domain.schema';
-import { putObject } from '../lib/storage';
+import { garment, garmentDetection, upload } from '../../db/domain.schema';
+import { getObjectBuffer } from '../lib/storage';
+import { detectGarmentsFromImage } from '../prompts/detectGarments';
 import { apiOk, apiErr } from './response';
-
-function thumbnailUrl(key: string): string {
-  return `/api/storage/object?key=${encodeURIComponent(key)}`;
-}
+import {
+  DetectGarmentsBodySchema,
+  CreateGarmentsBodySchema,
+  UpdateGarmentBodySchema,
+} from '@shared/dtos/garment';
 
 export const garmentsRoutes = router({
   '/api/garments': {
+    async GET(req) {
+      const result = await requireUser(req);
+      if (result instanceof Response) return result;
+
+      const url = new URL(req.url);
+      const category = url.searchParams.get('category')?.trim() || undefined;
+      const search = url.searchParams.get('search')?.trim() || undefined;
+
+      const conditions = [eq(garment.userId, result.userId)];
+      if (category) conditions.push(eq(garment.category, category));
+
+      const rows = await db
+        .select({
+          id: garment.id,
+          uploadId: garment.uploadId,
+          name: garment.name,
+          category: garment.category,
+          createdAt: garment.createdAt,
+          updatedAt: garment.updatedAt,
+        })
+        .from(garment)
+        .where(and(...conditions))
+        .orderBy(desc(garment.createdAt));
+
+      let list = rows.map((r) => ({
+        id: r.id,
+        uploadId: r.uploadId,
+        imageUrl: `/api/uploads/${r.uploadId}/image`,
+        name: r.name,
+        category: r.category,
+        createdAt: r.createdAt.toISOString(),
+        updatedAt: r.updatedAt.toISOString(),
+      }));
+
+      if (search) {
+        const lower = search.toLowerCase();
+        list = list.filter((g) => (g.name ?? '').toLowerCase().includes(lower));
+      }
+
+      return apiOk({ garments: list });
+    },
+
     async POST(req) {
       const result = await requireUser(req);
       if (result instanceof Response) return result;
 
-      const contentType = req.headers.get('content-type') ?? '';
-      if (!contentType.includes('multipart/form-data')) {
-        return apiErr({ message: 'Expected multipart/form-data' }, 400);
+      let body: unknown;
+      try {
+        body = await req.json();
+      } catch {
+        return apiErr({ code: 'INVALID_JSON', message: 'Invalid JSON' }, 400);
       }
 
-      const formData = await req.formData();
-      const file = formData.get('file') ?? formData.get('image');
-      if (!file || !(file instanceof File)) {
-        return apiErr({ message: 'Missing file or image' }, 400);
+      const parsed = CreateGarmentsBodySchema.safeParse(body);
+      if (!parsed.success) {
+        return apiErr(
+          { code: 'VALIDATION_ERROR', message: parsed.error.message ?? 'Invalid body' },
+          400
+        );
       }
 
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
-      const id = crypto.randomUUID();
-      const key = `garments/${result.userId}/${id}.${ext}`;
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const mime = file.type || (ext === 'png' ? 'image/png' : 'image/jpeg');
-      await putObject(key, buffer, mime);
+      const { detectionIds, overrides = {} } = parsed.data;
+      if (detectionIds.length === 0) {
+        return apiErr(
+          { code: 'EMPTY_DETECTION_IDS', message: 'detectionIds must be non-empty' },
+          400
+        );
+      }
 
-      const name = (formData.get('name') as string) || file.name || 'Garment';
-      await db.insert(garment).values({
-        id,
-        userId: result.userId,
-        name,
-        originalImageKey: key,
+      const detections = await db
+        .select()
+        .from(garmentDetection)
+        .where(
+          and(
+            eq(garmentDetection.userId, result.userId),
+            inArray(garmentDetection.id, detectionIds)
+          )
+        );
+
+      if (detections.length !== detectionIds.length) {
+        return apiErr(
+          {
+            code: 'DETECTION_OWNERSHIP',
+            message: 'Some detections not found or do not belong to you',
+          },
+          403
+        );
+      }
+
+      const createdIds: string[] = [];
+      for (const d of detections) {
+        const override = overrides[d.id];
+        const id = crypto.randomUUID();
+        await db.insert(garment).values({
+          id,
+          userId: result.userId,
+          uploadId: d.uploadId,
+          bboxNorm: d.bboxNorm,
+          name: override?.name ?? d.labelGuess ?? 'Unnamed',
+          category: override?.category ?? d.categoryGuess ?? null,
+          garmentProfileJson: d.garmentProfileJson,
+        });
+        createdIds.push(id);
+      }
+
+      return apiOk({ createdIds });
+    },
+  },
+
+  '/api/garments/detect': {
+    async POST(req) {
+      const result = await requireUser(req);
+      if (result instanceof Response) return result;
+
+      let body: unknown;
+      try {
+        body = await req.json();
+      } catch {
+        return apiErr({ code: 'INVALID_JSON', message: 'Invalid JSON' }, 400);
+      }
+
+      const parsed = DetectGarmentsBodySchema.safeParse(body);
+      if (!parsed.success) {
+        return apiErr(
+          { code: 'VALIDATION_ERROR', message: parsed.error.message ?? 'Invalid body' },
+          400
+        );
+      }
+
+      const { uploadId } = parsed.data;
+
+      const [uploadRow] = await db
+        .select()
+        .from(upload)
+        .where(and(eq(upload.id, uploadId), eq(upload.userId, result.userId)));
+
+      if (!uploadRow) {
+        return apiErr(
+          { code: 'UPLOAD_NOT_FOUND', message: 'Upload not found or does not belong to you' },
+          404
+        );
+      }
+
+      let buffer: Buffer;
+      try {
+        buffer = await getObjectBuffer(uploadRow.storedKey);
+      } catch {
+        return apiErr({ code: 'STORAGE_ERROR', message: 'Failed to load image from storage' }, 500);
+      }
+
+      const { detections: aiDetections } = await detectGarmentsFromImage({
+        image: { buffer, mimeType: uploadRow.storedMime },
       });
 
-      return apiOk({ id, thumbnailUrl: thumbnailUrl(key) });
+      const imageUrl = `/api/uploads/${uploadId}/image`;
+
+      const inserted: {
+        id: string;
+        bbox: (typeof aiDetections)[0]['bbox'];
+        categoryGuess: string | null;
+        labelGuess: string | null;
+        confidence: number | null;
+        garmentProfile: unknown;
+      }[] = [];
+
+      for (const d of aiDetections) {
+        const id = crypto.randomUUID();
+        const confidence = d.confidence;
+        await db.insert(garmentDetection).values({
+          id,
+          userId: result.userId,
+          uploadId,
+          bboxNorm: d.bbox,
+          categoryGuess: d.category ?? null,
+          labelGuess: d.label ?? null,
+          garmentProfileJson: d.garment_profile ? (d.garment_profile as object) : null,
+          confidence: confidence ?? null,
+        });
+        inserted.push({
+          id,
+          bbox: d.bbox,
+          categoryGuess: d.category ?? null,
+          labelGuess: d.label ?? null,
+          confidence: confidence ?? null,
+          garmentProfile: d.garment_profile ?? null,
+        });
+      }
+
+      return apiOk({
+        uploadId,
+        imageUrl,
+        detections: inserted.map((d) => ({
+          id: d.id,
+          bbox: d.bbox,
+          categoryGuess: d.categoryGuess,
+          labelGuess: d.labelGuess,
+          confidence: d.confidence,
+          garmentProfile: d.garmentProfile,
+        })),
+      });
+    },
+  },
+
+  '/api/garments/:id': {
+    async PATCH(req) {
+      const result = await requireUser(req);
+      if (result instanceof Response) return result;
+
+      const id = req.params.id;
+      if (!id) return apiErr({ code: 'MISSING_ID', message: 'Missing garment id' }, 400);
+
+      let body: unknown;
+      try {
+        body = await req.json();
+      } catch {
+        return apiErr({ code: 'INVALID_JSON', message: 'Invalid JSON' }, 400);
+      }
+
+      const parsed = UpdateGarmentBodySchema.safeParse(body);
+      if (!parsed.success) {
+        return apiErr(
+          { code: 'VALIDATION_ERROR', message: parsed.error.message ?? 'Invalid body' },
+          400
+        );
+      }
+
+      const [existing] = await db
+        .select()
+        .from(garment)
+        .where(and(eq(garment.id, id), eq(garment.userId, result.userId)));
+
+      if (!existing) {
+        return apiErr({ code: 'NOT_FOUND', message: 'Garment not found' }, 404);
+      }
+
+      const updates: {
+        name?: string | null;
+        category?: string | null;
+        garmentProfileJson?: unknown;
+      } = {};
+      if (parsed.data.name !== undefined) updates.name = parsed.data.name;
+      if (parsed.data.category !== undefined) updates.category = parsed.data.category;
+      if (parsed.data.garmentProfileJson !== undefined)
+        updates.garmentProfileJson = parsed.data.garmentProfileJson;
+
+      if (Object.keys(updates).length === 0) {
+        const g = {
+          id: existing.id,
+          uploadId: existing.uploadId,
+          imageUrl: `/api/uploads/${existing.uploadId}/image`,
+          name: existing.name,
+          category: existing.category,
+          createdAt: existing.createdAt.toISOString(),
+          updatedAt: existing.updatedAt.toISOString(),
+        };
+        return apiOk({ garment: g });
+      }
+
+      const [updated] = await db.update(garment).set(updates).where(eq(garment.id, id)).returning({
+        id: garment.id,
+        uploadId: garment.uploadId,
+        name: garment.name,
+        category: garment.category,
+        createdAt: garment.createdAt,
+        updatedAt: garment.updatedAt,
+      });
+
+      if (!updated) return apiErr({ code: 'UPDATE_FAILED', message: 'Update failed' }, 500);
+
+      return apiOk({
+        garment: {
+          id: updated.id,
+          uploadId: updated.uploadId,
+          imageUrl: `/api/uploads/${updated.uploadId}/image`,
+          name: updated.name,
+          category: updated.category,
+          createdAt: updated.createdAt.toISOString(),
+          updatedAt: updated.updatedAt.toISOString(),
+        },
+      });
     },
   },
 });

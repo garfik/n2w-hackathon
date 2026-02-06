@@ -6,6 +6,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -50,11 +51,13 @@ export const upload = pgTable(
   ]
 );
 
-export const uploadRelations = relations(upload, ({ one }) => ({
+export const uploadRelations = relations(upload, ({ one, many }) => ({
   user: one(user, {
     fields: [upload.userId],
     references: [user.id],
   }),
+  garments: many(garment),
+  garmentDetections: many(garmentDetection),
 }));
 
 export const avatar = pgTable('avatar', {
@@ -95,16 +98,51 @@ export const avatarAnalysis = pgTable(
   ]
 );
 
-export const garment = pgTable('garment', {
-  id: text('id').primaryKey(),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  originalImageKey: text('original_image_key').notNull(),
-  garmentProfileJson: jsonb('garment_profile_json'),
-  ...timestamps,
-});
+export const garment = pgTable(
+  'garment',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    uploadId: text('upload_id')
+      .notNull()
+      .references(() => upload.id, { onDelete: 'restrict' }),
+    bboxNorm: jsonb('bbox_norm').$type<{ x: number; y: number; w: number; h: number }>(),
+    name: text('name'),
+    category: text('category'),
+    garmentProfileJson: jsonb('garment_profile_json'),
+    ...timestamps,
+  },
+  (table) => [
+    index('garment_user_id_idx').on(table.userId),
+    index('garment_category_idx').on(table.category),
+    index('garment_upload_id_idx').on(table.uploadId),
+  ]
+);
+
+export const garmentDetection = pgTable(
+  'garment_detection',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    uploadId: text('upload_id')
+      .notNull()
+      .references(() => upload.id, { onDelete: 'cascade' }),
+    bboxNorm: jsonb('bbox_norm').$type<{ x: number; y: number; w: number; h: number }>().notNull(),
+    categoryGuess: text('category_guess'),
+    labelGuess: text('label_guess'),
+    garmentProfileJson: jsonb('garment_profile_json'),
+    confidence: real('confidence'), // 0..1
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('garment_detection_user_id_idx').on(table.userId),
+    index('garment_detection_upload_id_idx').on(table.uploadId),
+  ]
+);
 
 export const outfitAnalysis = pgTable(
   'outfit_analysis',
@@ -193,6 +231,7 @@ export const userDomainRelations = relations(user, ({ many }) => ({
   avatars: many(avatar),
   avatarAnalyses: many(avatarAnalysis),
   garments: many(garment),
+  garmentDetections: many(garmentDetection),
   outfitAnalyses: many(outfitAnalysis),
   tryonResults: many(tryonResult),
   outfits: many(outfit),
@@ -226,6 +265,21 @@ export const garmentRelations = relations(garment, ({ one }) => ({
   user: one(user, {
     fields: [garment.userId],
     references: [user.id],
+  }),
+  upload: one(upload, {
+    fields: [garment.uploadId],
+    references: [upload.id],
+  }),
+}));
+
+export const garmentDetectionRelations = relations(garmentDetection, ({ one }) => ({
+  user: one(user, {
+    fields: [garmentDetection.userId],
+    references: [user.id],
+  }),
+  upload: one(upload, {
+    fields: [garmentDetection.uploadId],
+    references: [upload.id],
   }),
 }));
 

@@ -20,6 +20,14 @@ import {
   type AnalyzeAvatarErrorDto,
   type AnalyzeAvatarResponseDto,
 } from '@shared/dtos/avatar';
+import {
+  ListGarmentsResponseDtoSchema,
+  DetectGarmentsResponseDtoSchema,
+  CreateGarmentsResponseDtoSchema,
+  type GarmentListItem,
+  type DetectionItem,
+  type CreateGarmentsBody,
+} from '@shared/dtos/garment';
 import { apiErrorSchema } from '@shared/api-response';
 
 const credentials: RequestCredentials = 'include';
@@ -225,4 +233,58 @@ export async function getOutfit(outfitId: string): Promise<OutfitDetail> {
   const data = raw as { success?: boolean; data?: { outfit?: OutfitDetail } };
   if (!data.data?.outfit) throw new Error('Invalid outfit response');
   return data.data.outfit;
+}
+
+// --- Garments ---
+
+export type { GarmentListItem, DetectionItem };
+
+export type ListGarmentsParams = { category?: string; search?: string };
+
+export async function listGarments(params?: ListGarmentsParams): Promise<GarmentListItem[]> {
+  const url = new URL('/api/garments', window.location.origin);
+  if (params?.category) url.searchParams.set('category', params.category);
+  if (params?.search) url.searchParams.set('search', params.search);
+  const res = await fetch(url.toString(), { credentials });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Failed to load garments');
+  const parsed = ListGarmentsResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid list garments response');
+  return parsed.data.data.garments;
+}
+
+export type DetectGarmentsResult = {
+  uploadId: string;
+  imageUrl: string;
+  detections: DetectionItem[];
+};
+
+export async function detectGarments(uploadId: string): Promise<DetectGarmentsResult> {
+  const res = await fetch('/api/garments/detect', {
+    method: 'POST',
+    credentials,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uploadId }),
+  });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Detect failed');
+  const parsed = DetectGarmentsResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid detect response');
+  return parsed.data.data;
+}
+
+export async function createGarmentsFromDetections(
+  body: CreateGarmentsBody
+): Promise<{ createdIds: string[] }> {
+  const res = await fetch('/api/garments', {
+    method: 'POST',
+    credentials,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Create garments failed');
+  const parsed = CreateGarmentsResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid create garments response');
+  return parsed.data.data;
 }

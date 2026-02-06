@@ -14,10 +14,17 @@ import {
   analyzeAvatar,
   listOutfits,
   getOutfit,
+  listGarments,
+  detectGarments,
+  createGarmentsFromDetections,
   type Avatar,
   type CreateAvatarParams,
   type UpdateAvatarParams,
+  type GarmentListItem,
+  type ListGarmentsParams,
+  type DetectGarmentsResult,
 } from '@client/lib/n2wApi';
+import type { CreateGarmentsBody } from '@shared/dtos/garment';
 import type { AnalyzeAvatarResponseDto } from '@shared/dtos/avatar';
 import { queryKeys } from '@client/lib/queryClient';
 
@@ -119,6 +126,41 @@ export function useOutfit(
     queryKey: queryKeys.outfits.detail(outfitId ?? ''),
     queryFn: () => getOutfit(outfitId!),
     enabled: !!outfitId,
+    ...options,
+  });
+}
+
+// --- Garments ---
+
+export function useGarmentsList(
+  params?: ListGarmentsParams,
+  options?: Omit<UseQueryOptions<GarmentListItem[]>, 'queryKey' | 'queryFn'>
+) {
+  return useQuery({
+    queryKey: [...queryKeys.garments.list(), params?.category ?? '', params?.search ?? ''],
+    queryFn: () => listGarments(params),
+    ...options,
+  });
+}
+
+export function useDetectGarments(
+  options?: UseMutationOptions<DetectGarmentsResult, Error, string>
+) {
+  return useMutation({
+    mutationFn: (uploadId: string) => detectGarments(uploadId),
+    ...options,
+  });
+}
+
+export function useCreateGarmentsFromDetections(
+  options?: UseMutationOptions<{ createdIds: string[] }, Error, CreateGarmentsBody>
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createGarmentsFromDetections,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.garments.all });
+    },
     ...options,
   });
 }
