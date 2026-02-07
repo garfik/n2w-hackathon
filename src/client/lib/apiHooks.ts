@@ -15,14 +15,19 @@ import {
   listOutfits,
   getOutfit,
   listGarments,
+  getGarment,
   detectGarments,
   createGarmentsFromDetections,
+  updateGarment,
+  deleteGarment,
   type Avatar,
   type CreateAvatarParams,
   type UpdateAvatarParams,
   type GarmentListItem,
+  type GarmentDetail,
   type ListGarmentsParams,
   type DetectGarmentsResult,
+  type UpdateGarmentParams,
 } from '@client/lib/n2wApi';
 import type { CreateGarmentsBody } from '@shared/dtos/garment';
 import type { AnalyzeAvatarResponseDto } from '@shared/dtos/avatar';
@@ -143,6 +148,18 @@ export function useGarmentsList(
   });
 }
 
+export function useGarment(
+  garmentId: string | undefined,
+  options?: Omit<UseQueryOptions<GarmentDetail>, 'queryKey' | 'queryFn'>
+) {
+  return useQuery({
+    queryKey: queryKeys.garments.detail(garmentId ?? ''),
+    queryFn: () => getGarment(garmentId!),
+    enabled: !!garmentId,
+    ...options,
+  });
+}
+
 export function useDetectGarments(
   options?: UseMutationOptions<DetectGarmentsResult, Error, string>
 ) {
@@ -158,6 +175,33 @@ export function useCreateGarmentsFromDetections(
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createGarmentsFromDetections,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.garments.all });
+    },
+    ...options,
+  });
+}
+
+export function useUpdateGarment(
+  options?: UseMutationOptions<GarmentDetail, Error, UpdateGarmentParams>
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: updateGarment,
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.garments.all });
+      qc.invalidateQueries({ queryKey: queryKeys.garments.detail(vars.garmentId) });
+    },
+    ...options,
+  });
+}
+
+export function useDeleteGarment(
+  options?: UseMutationOptions<{ deleted: boolean }, Error, string>
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteGarment,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.garments.all });
     },

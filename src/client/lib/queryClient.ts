@@ -23,5 +23,6 @@ export const queryKeys = {
   garments: {
     all: ['garments'] as const,
     list: () => [...queryKeys.garments.all, 'list'] as const,
+    detail: (id: string) => [...queryKeys.garments.all, 'detail', id] as const,
   },
 } as const;

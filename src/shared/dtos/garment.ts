@@ -16,6 +16,7 @@ export const GarmentListItemSchema = z.object({
   imageUrl: z.string(),
   name: z.string().nullable(),
   category: z.string().nullable(),
+  bboxNorm: BboxNormSchema.nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -73,6 +74,34 @@ export const CreateGarmentsResponseDtoSchema = apiSuccessSchema(
 );
 export type CreateGarmentsResponseDto = z.output<typeof CreateGarmentsResponseDtoSchema>;
 
+// --- GET /api/garments/:id (single garment with full detail) ---
+
+const BboxNormDtoSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  w: z.number(),
+  h: z.number(),
+});
+
+export const GarmentDetailSchema = z.object({
+  id: z.string(),
+  uploadId: z.string(),
+  imageUrl: z.string(),
+  name: z.string().nullable(),
+  category: z.string().nullable(),
+  bboxNorm: BboxNormDtoSchema.nullable(),
+  garmentProfileJson: z.unknown().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type GarmentDetail = z.output<typeof GarmentDetailSchema>;
+
+export const GetGarmentResponseDtoSchema = apiSuccessSchema(
+  z.object({ garment: GarmentDetailSchema })
+);
+export type GetGarmentResponseDto = z.output<typeof GetGarmentResponseDtoSchema>;
+
 // --- PATCH /api/garments/:id ---
 
 export const UpdateGarmentBodySchema = z.object({
@@ -83,6 +112,11 @@ export const UpdateGarmentBodySchema = z.object({
 export type UpdateGarmentBody = z.output<typeof UpdateGarmentBodySchema>;
 
 export const UpdateGarmentResponseDtoSchema = apiSuccessSchema(
-  z.object({ garment: GarmentListItemSchema })
+  z.object({ garment: GarmentDetailSchema })
 );
 export type UpdateGarmentResponseDto = z.output<typeof UpdateGarmentResponseDtoSchema>;
+
+// --- DELETE /api/garments/:id ---
+
+export const DeleteGarmentResponseDtoSchema = apiSuccessSchema(z.object({ deleted: z.boolean() }));
+export type DeleteGarmentResponseDto = z.output<typeof DeleteGarmentResponseDtoSchema>;

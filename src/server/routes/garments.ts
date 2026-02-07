@@ -31,6 +31,7 @@ export const garmentsRoutes = router({
           uploadId: garment.uploadId,
           name: garment.name,
           category: garment.category,
+          bboxNorm: garment.bboxNorm,
           createdAt: garment.createdAt,
           updatedAt: garment.updatedAt,
         })
@@ -44,6 +45,7 @@ export const garmentsRoutes = router({
         imageUrl: `/api/uploads/${r.uploadId}/image`,
         name: r.name,
         category: r.category,
+        bboxNorm: r.bboxNorm ?? null,
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
       }));
@@ -218,6 +220,37 @@ export const garmentsRoutes = router({
   },
 
   '/api/garments/:id': {
+    async GET(req) {
+      const result = await requireUser(req);
+      if (result instanceof Response) return result;
+
+      const id = req.params.id;
+      if (!id) return apiErr({ code: 'MISSING_ID', message: 'Missing garment id' }, 400);
+
+      const [row] = await db
+        .select()
+        .from(garment)
+        .where(and(eq(garment.id, id), eq(garment.userId, result.userId)));
+
+      if (!row) {
+        return apiErr({ code: 'NOT_FOUND', message: 'Garment not found' }, 404);
+      }
+
+      return apiOk({
+        garment: {
+          id: row.id,
+          uploadId: row.uploadId,
+          imageUrl: `/api/uploads/${row.uploadId}/image`,
+          name: row.name,
+          category: row.category,
+          bboxNorm: row.bboxNorm ?? null,
+          garmentProfileJson: row.garmentProfileJson ?? null,
+          createdAt: row.createdAt.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
+        },
+      });
+    },
+
     async PATCH(req) {
       const result = await requireUser(req);
       if (result instanceof Response) return result;
@@ -260,26 +293,22 @@ export const garmentsRoutes = router({
         updates.garmentProfileJson = parsed.data.garmentProfileJson;
 
       if (Object.keys(updates).length === 0) {
-        const g = {
-          id: existing.id,
-          uploadId: existing.uploadId,
-          imageUrl: `/api/uploads/${existing.uploadId}/image`,
-          name: existing.name,
-          category: existing.category,
-          createdAt: existing.createdAt.toISOString(),
-          updatedAt: existing.updatedAt.toISOString(),
-        };
-        return apiOk({ garment: g });
+        return apiOk({
+          garment: {
+            id: existing.id,
+            uploadId: existing.uploadId,
+            imageUrl: `/api/uploads/${existing.uploadId}/image`,
+            name: existing.name,
+            category: existing.category,
+            bboxNorm: existing.bboxNorm ?? null,
+            garmentProfileJson: existing.garmentProfileJson ?? null,
+            createdAt: existing.createdAt.toISOString(),
+            updatedAt: existing.updatedAt.toISOString(),
+          },
+        });
       }
 
-      const [updated] = await db.update(garment).set(updates).where(eq(garment.id, id)).returning({
-        id: garment.id,
-        uploadId: garment.uploadId,
-        name: garment.name,
-        category: garment.category,
-        createdAt: garment.createdAt,
-        updatedAt: garment.updatedAt,
-      });
+      const [updated] = await db.update(garment).set(updates).where(eq(garment.id, id)).returning();
 
       if (!updated) return apiErr({ code: 'UPDATE_FAILED', message: 'Update failed' }, 500);
 
@@ -290,10 +319,33 @@ export const garmentsRoutes = router({
           imageUrl: `/api/uploads/${updated.uploadId}/image`,
           name: updated.name,
           category: updated.category,
+          bboxNorm: updated.bboxNorm ?? null,
+          garmentProfileJson: updated.garmentProfileJson ?? null,
           createdAt: updated.createdAt.toISOString(),
           updatedAt: updated.updatedAt.toISOString(),
         },
       });
+    },
+
+    async DELETE(req) {
+      const result = await requireUser(req);
+      if (result instanceof Response) return result;
+
+      const id = req.params.id;
+      if (!id) return apiErr({ code: 'MISSING_ID', message: 'Missing garment id' }, 400);
+
+      const [existing] = await db
+        .select({ id: garment.id })
+        .from(garment)
+        .where(and(eq(garment.id, id), eq(garment.userId, result.userId)));
+
+      if (!existing) {
+        return apiErr({ code: 'NOT_FOUND', message: 'Garment not found' }, 404);
+      }
+
+      await db.delete(garment).where(eq(garment.id, id));
+
+      return apiOk({ deleted: true });
     },
   },
 });

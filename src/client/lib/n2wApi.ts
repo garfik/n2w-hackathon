@@ -22,11 +22,16 @@ import {
 } from '@shared/dtos/avatar';
 import {
   ListGarmentsResponseDtoSchema,
+  GetGarmentResponseDtoSchema,
   DetectGarmentsResponseDtoSchema,
   CreateGarmentsResponseDtoSchema,
+  UpdateGarmentResponseDtoSchema,
+  DeleteGarmentResponseDtoSchema,
   type GarmentListItem,
+  type GarmentDetail,
   type DetectionItem,
   type CreateGarmentsBody,
+  type UpdateGarmentBody,
 } from '@shared/dtos/garment';
 import { apiErrorSchema } from '@shared/api-response';
 
@@ -237,7 +242,7 @@ export async function getOutfit(outfitId: string): Promise<OutfitDetail> {
 
 // --- Garments ---
 
-export type { GarmentListItem, DetectionItem };
+export type { GarmentListItem, GarmentDetail, DetectionItem };
 
 export type ListGarmentsParams = { category?: string; search?: string };
 
@@ -273,6 +278,15 @@ export async function detectGarments(uploadId: string): Promise<DetectGarmentsRe
   return parsed.data.data;
 }
 
+export async function getGarment(garmentId: string): Promise<GarmentDetail> {
+  const res = await fetch(`/api/garments/${encodeURIComponent(garmentId)}`, { credentials });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Garment not found');
+  const parsed = GetGarmentResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid get garment response');
+  return parsed.data.data.garment;
+}
+
 export async function createGarmentsFromDetections(
   body: CreateGarmentsBody
 ): Promise<{ createdIds: string[] }> {
@@ -286,5 +300,46 @@ export async function createGarmentsFromDetections(
   if (!res.ok) parseErrorResponse(raw, 'Create garments failed');
   const parsed = CreateGarmentsResponseDtoSchema.safeParse(raw);
   if (!parsed.success) throw new Error('Invalid create garments response');
+  return parsed.data.data;
+}
+
+export type UpdateGarmentParams = {
+  garmentId: string;
+  name?: string;
+  category?: string;
+  garmentProfileJson?: unknown;
+};
+
+export async function updateGarment({
+  garmentId,
+  ...body
+}: UpdateGarmentParams): Promise<GarmentDetail> {
+  const payload: UpdateGarmentBody = {};
+  if (body.name !== undefined) payload.name = body.name;
+  if (body.category !== undefined) payload.category = body.category;
+  if (body.garmentProfileJson !== undefined) payload.garmentProfileJson = body.garmentProfileJson;
+
+  const res = await fetch(`/api/garments/${encodeURIComponent(garmentId)}`, {
+    method: 'PATCH',
+    credentials,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Update failed');
+  const parsed = UpdateGarmentResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid update garment response');
+  return parsed.data.data.garment;
+}
+
+export async function deleteGarment(garmentId: string): Promise<{ deleted: boolean }> {
+  const res = await fetch(`/api/garments/${encodeURIComponent(garmentId)}`, {
+    method: 'DELETE',
+    credentials,
+  });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Delete failed');
+  const parsed = DeleteGarmentResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid delete garment response');
   return parsed.data.data;
 }
