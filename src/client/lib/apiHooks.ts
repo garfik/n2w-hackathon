@@ -14,6 +14,9 @@ import {
   analyzeAvatar,
   listOutfits,
   getOutfit,
+  createOutfit,
+  generateScore,
+  generateTryon,
   listGarments,
   getGarment,
   detectGarments,
@@ -23,6 +26,10 @@ import {
   type Avatar,
   type CreateAvatarParams,
   type UpdateAvatarParams,
+  type CreateOutfitParams,
+  type CreateOutfitResult,
+  type ScoreResult,
+  type TryonResult,
   type GarmentListItem,
   type GarmentDetail,
   type ListGarmentsParams,
@@ -131,6 +138,41 @@ export function useOutfit(
     queryKey: queryKeys.outfits.detail(outfitId ?? ''),
     queryFn: () => getOutfit(outfitId!),
     enabled: !!outfitId,
+    ...options,
+  });
+}
+
+export function useCreateOutfit(
+  options?: UseMutationOptions<CreateOutfitResult, Error, CreateOutfitParams>
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createOutfit,
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.outfits.list(vars.avatarId) });
+    },
+    ...options,
+  });
+}
+
+export function useGenerateScore(options?: UseMutationOptions<ScoreResult, Error, string>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: generateScore,
+    onSuccess: (_, outfitId) => {
+      qc.invalidateQueries({ queryKey: queryKeys.outfits.detail(outfitId) });
+    },
+    ...options,
+  });
+}
+
+export function useGenerateTryon(options?: UseMutationOptions<TryonResult, Error, string>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: generateTryon,
+    onSuccess: (_, outfitId) => {
+      qc.invalidateQueries({ queryKey: queryKeys.outfits.detail(outfitId) });
+    },
     ...options,
   });
 }

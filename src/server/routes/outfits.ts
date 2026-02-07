@@ -1,111 +1,198 @@
+import { z } from 'zod';
 import { router } from './router';
 import { requireUser } from '../lib/requireUser';
 import { db } from '../../db/client';
-import { outfit, outfitGarment, avatar, garment } from '../../db/domain.schema';
-import { eq, and, desc } from 'drizzle-orm';
-import { apiOk, apiErr } from './response';
+import { outfit, outfitItem, tryon, avatar, garment, avatarAnalysis } from '../../db/domain.schema';
+import { eq, and, or, lt, desc, sql, inArray } from 'drizzle-orm';
+import { apiErr } from './response';
+import { sha256 } from '../lib/hash';
+import { logger } from '../lib/logger';
+import { scoreOutfit } from '../prompts/scoreOutfit';
+import { generateTryon } from '../prompts/generateTryon';
+import {
+  CreateOutfitBodySchema,
+  CreateOutfitResponseDtoSchema,
+  ListOutfitsResponseDtoSchema,
+  GetOutfitResponseDtoSchema,
+  ScoreOutfitResponseDtoSchema,
+  TryonOutfitResponseDtoSchema,
+} from '@shared/dtos/outfit';
 
-/** Garment image URL via upload (uploads.id). */
-function garmentImageUrl(uploadId: string): string {
+const log = logger.child({ module: 'outfits' });
+
+function uploadImageUrl(uploadId: string): string {
   return `/api/uploads/${uploadId}/image`;
 }
 
+function dtoResponse<T>(schema: z.ZodType<T>, raw: unknown, status = 200): Response {
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) {
+    log.warn({ issues: parsed.error.flatten() }, 'DTO validation failed');
+    return apiErr({ message: 'Response validation error', issues: parsed.error.flatten() }, 422);
+  }
+  return Response.json(parsed.data, { status });
+}
+
 export const outfitsRoutes = router({
-  '/api/outfits': {
-    async GET(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
-      const url = new URL(req.url);
-      const avatarIdFilter = url.searchParams.get('avatarId');
-
-      // Build where conditions
-      const conditions = [eq(outfit.userId, result.userId)];
-      if (avatarIdFilter) {
-        conditions.push(eq(outfit.avatarId, avatarIdFilter));
-      }
-
-      const rows = await db
-        .select({
-          id: outfit.id,
-          avatarId: outfit.avatarId,
-          occasion: outfit.occasion,
-          createdAt: outfit.createdAt,
-        })
-        .from(outfit)
-        .where(and(...conditions))
-        .orderBy(desc(outfit.createdAt));
-
-      return apiOk({ outfits: rows });
-    },
-
+  '/api/avatars/:id/outfits': {
     async POST(req) {
       const result = await requireUser(req);
       if (result instanceof Response) return result;
 
-      let body: { garmentIds?: string[]; occasion?: string; avatarId?: string };
+      const avatarId = req.params.id;
+      if (!avatarId) return apiErr({ message: 'Missing avatar id' }, 400);
+
+      let rawBody: unknown;
       try {
-        body = (await req.json()) as {
-          garmentIds?: string[];
-          occasion?: string;
-          avatarId?: string;
-        };
+        rawBody = await req.json();
       } catch {
         return apiErr({ message: 'Invalid JSON' }, 400);
       }
-      const garmentIds = body.garmentIds;
-      const occasion = body.occasion?.trim();
-      const avatarId = body.avatarId;
 
-      if (!Array.isArray(garmentIds) || garmentIds.length === 0 || !occasion) {
-        return apiErr({ message: 'garmentIds (non-empty array) and occasion required' }, 400);
+      const bodyParse = CreateOutfitBodySchema.safeParse(rawBody);
+      if (!bodyParse.success) {
+        return apiErr({ message: 'Validation failed', issues: bodyParse.error.flatten() }, 400);
+      }
+      const { garmentIds: rawGarmentIds, occasion: rawOccasion } = bodyParse.data;
+
+      const [avatarRow] = await db
+        .select({ id: avatar.id })
+        .from(avatar)
+        .where(and(eq(avatar.id, avatarId), eq(avatar.userId, result.userId)));
+      if (!avatarRow) {
+        return apiErr({ message: 'Avatar not found' }, 404);
       }
 
-      // If avatarId provided, verify it belongs to user; otherwise use first avatar
-      let targetAvatarId: string;
-      if (avatarId) {
-        const [targetAvatar] = await db
-          .select({ id: avatar.id })
-          .from(avatar)
-          .where(and(eq(avatar.id, avatarId), eq(avatar.userId, result.userId)));
-        if (!targetAvatar) {
-          return apiErr({ message: 'Avatar not found' }, 404);
-        }
-        targetAvatarId = targetAvatar.id;
-      } else {
-        const [firstAvatar] = await db
-          .select({ id: avatar.id })
-          .from(avatar)
-          .where(eq(avatar.userId, result.userId))
-          .limit(1);
-        if (!firstAvatar) {
-          return apiErr({ message: 'Create an avatar first' }, 400);
-        }
-        targetAvatarId = firstAvatar.id;
-      }
-
+      const garmentIdsSortedUnique = [...new Set(rawGarmentIds)].sort();
       const userGarments = await db
         .select({ id: garment.id })
         .from(garment)
-        .where(eq(garment.userId, result.userId));
-      const userGarmentIds = new Set(userGarments.map((g) => g.id));
-      const invalid = garmentIds.filter((gid) => !userGarmentIds.has(gid));
-      if (invalid.length > 0) {
-        return apiErr({ message: 'Some garments do not belong to you' }, 400);
+        .where(and(eq(garment.userId, result.userId), inArray(garment.id, garmentIdsSortedUnique)));
+      const foundIds = new Set(userGarments.map((g) => g.id));
+      const missing = garmentIdsSortedUnique.filter((id) => !foundIds.has(id));
+      if (missing.length > 0) {
+        return apiErr({ message: `Garments not found or not yours: ${missing.join(', ')}` }, 400);
       }
 
-      const id = crypto.randomUUID();
-      await db.insert(outfit).values({
-        id,
-        userId: result.userId,
-        avatarId: targetAvatarId,
-        occasion,
+      const occasionCanon = rawOccasion.trim().toLowerCase();
+      const outfitKey = sha256(`${avatarId}:${garmentIdsSortedUnique.join(',')}:${occasionCanon}`);
+      const tryonKey = sha256(`${avatarId}:${garmentIdsSortedUnique.join(',')}`);
+
+      const newId = crypto.randomUUID();
+      const insertResult = await db
+        .insert(outfit)
+        .values({
+          id: newId,
+          userId: result.userId,
+          avatarId,
+          occasion: occasionCanon,
+          outfitKey,
+          tryonKey,
+          status: 'pending',
+        })
+        .onConflictDoNothing({ target: [outfit.userId, outfit.outfitKey] })
+        .returning({ id: outfit.id });
+
+      let outfitId: string;
+      let cached = false;
+
+      if (insertResult.length > 0 && insertResult[0]) {
+        outfitId = insertResult[0].id;
+      } else {
+        const [existing] = await db
+          .select({ id: outfit.id })
+          .from(outfit)
+          .where(and(eq(outfit.userId, result.userId), eq(outfit.outfitKey, outfitKey)));
+        if (!existing) {
+          return apiErr({ message: 'Race condition: outfit disappeared' }, 500);
+        }
+        outfitId = existing.id;
+        cached = true;
+      }
+
+      for (const gId of garmentIdsSortedUnique) {
+        await db
+          .insert(outfitItem)
+          .values({ id: crypto.randomUUID(), outfitId, garmentId: gId })
+          .onConflictDoNothing({ target: [outfitItem.outfitId, outfitItem.garmentId] });
+      }
+
+      await db
+        .insert(tryon)
+        .values({
+          id: crypto.randomUUID(),
+          userId: result.userId,
+          avatarId,
+          tryonKey,
+          status: 'pending',
+        })
+        .onConflictDoNothing({ target: [tryon.userId, tryon.tryonKey] });
+
+      return dtoResponse(CreateOutfitResponseDtoSchema, {
+        success: true as const,
+        data: { outfitId, cached },
       });
-      for (const garmentId of garmentIds) {
-        await db.insert(outfitGarment).values({ outfitId: id, garmentId });
+    },
+
+    async GET(req) {
+      const result = await requireUser(req);
+      if (result instanceof Response) return result;
+
+      const avatarId = req.params.id;
+      if (!avatarId) return apiErr({ message: 'Missing avatar id' }, 400);
+
+      const rows = await db
+        .select({
+          id: outfit.id,
+          occasion: outfit.occasion,
+          status: outfit.status,
+          scoreJson: outfit.scoreJson,
+          tryonKey: outfit.tryonKey,
+          createdAt: outfit.createdAt,
+        })
+        .from(outfit)
+        .where(and(eq(outfit.userId, result.userId), eq(outfit.avatarId, avatarId)))
+        .orderBy(desc(outfit.createdAt));
+
+      // Batch-fetch tryon statuses
+      const tryonKeys = [...new Set(rows.map((r) => r.tryonKey))];
+      let tryonMap = new Map<
+        string,
+        { id: string; status: string; imageUploadId: string | null }
+      >();
+      if (tryonKeys.length > 0) {
+        const tryonRows = await db
+          .select({
+            tryonKey: tryon.tryonKey,
+            id: tryon.id,
+            status: tryon.status,
+            imageUploadId: tryon.imageUploadId,
+          })
+          .from(tryon)
+          .where(and(eq(tryon.userId, result.userId), inArray(tryon.tryonKey, tryonKeys)));
+        tryonMap = new Map(tryonRows.map((t) => [t.tryonKey, t]));
       }
 
-      return apiOk({ id });
+      const outfits = rows.map((r) => {
+        const scoreData = r.scoreJson as { scores?: { overall?: number }; verdict?: string } | null;
+        const tryonData = tryonMap.get(r.tryonKey);
+        return {
+          id: r.id,
+          occasion: r.occasion,
+          status: r.status,
+          overall: scoreData?.scores?.overall ?? null,
+          verdict: scoreData?.verdict ?? null,
+          tryonId: tryonData?.id ?? null,
+          tryonStatus: tryonData?.status ?? null,
+          tryonImageUrl: tryonData?.imageUploadId ? uploadImageUrl(tryonData.imageUploadId) : null,
+          createdAt: r.createdAt,
+        };
+      });
+
+      return dtoResponse(ListOutfitsResponseDtoSchema, {
+        success: true as const,
+        data: { outfits },
+      });
     },
   },
 
@@ -125,29 +212,384 @@ export const outfitsRoutes = router({
       .select({
         id: garment.id,
         name: garment.name,
+        category: garment.category,
         uploadId: garment.uploadId,
       })
-      .from(outfitGarment)
-      .innerJoin(garment, eq(outfitGarment.garmentId, garment.id))
-      .where(eq(outfitGarment.outfitId, id));
+      .from(outfitItem)
+      .innerJoin(garment, eq(outfitItem.garmentId, garment.id))
+      .where(eq(outfitItem.outfitId, id));
 
     const garments = garmentRows.map((g) => ({
       id: g.id,
       name: g.name,
-      thumbnailUrl: garmentImageUrl(g.uploadId),
+      category: g.category,
+      thumbnailUrl: uploadImageUrl(g.uploadId),
     }));
 
-    return apiOk({
-      outfit: {
-        id: outfitRow.id,
-        occasion: outfitRow.occasion,
-        resultImageKey: outfitRow.resultImageKey,
-        scoreJson: outfitRow.scoreJson,
-        garments,
-        resultImageUrl: outfitRow.resultImageKey
-          ? `/api/storage/object?key=${encodeURIComponent(outfitRow.resultImageKey)}`
-          : null,
+    const [tryonRow] = await db
+      .select({
+        id: tryon.id,
+        status: tryon.status,
+        imageUploadId: tryon.imageUploadId,
+        errorCode: tryon.errorCode,
+        errorMessage: tryon.errorMessage,
+      })
+      .from(tryon)
+      .where(and(eq(tryon.userId, result.userId), eq(tryon.tryonKey, outfitRow.tryonKey)));
+
+    return dtoResponse(GetOutfitResponseDtoSchema, {
+      success: true as const,
+      data: {
+        outfit: {
+          id: outfitRow.id,
+          avatarId: outfitRow.avatarId,
+          occasion: outfitRow.occasion,
+          status: outfitRow.status,
+          scoreJson: outfitRow.scoreJson,
+          errorCode: outfitRow.errorCode,
+          errorMessage: outfitRow.errorMessage,
+          garments,
+          tryon: tryonRow
+            ? {
+                id: tryonRow.id,
+                status: tryonRow.status,
+                imageUrl: tryonRow.imageUploadId ? uploadImageUrl(tryonRow.imageUploadId) : null,
+                errorCode: tryonRow.errorCode,
+                errorMessage: tryonRow.errorMessage,
+              }
+            : null,
+          createdAt: outfitRow.createdAt,
+        },
       },
     });
   },
+
+  '/api/outfits/:id/score': {
+    async POST(req) {
+      const result = await requireUser(req);
+      if (result instanceof Response) return result;
+      const id = req.params.id;
+      if (!id) return apiErr({ message: 'Missing id' }, 400);
+
+      const [outfitRow] = await db
+        .select()
+        .from(outfit)
+        .where(and(eq(outfit.id, id), eq(outfit.userId, result.userId)));
+      if (!outfitRow) return apiErr({ message: 'Not found' }, 404);
+
+      // Lock: claim this outfit for scoring if eligible
+      const staleThreshold = sql`now() - interval '5 minutes'`;
+      const locked = await db
+        .update(outfit)
+        .set({
+          status: 'running',
+          errorCode: null,
+          errorMessage: null,
+          generationStartedAt: sql`now()`,
+        })
+        .where(
+          and(
+            eq(outfit.id, id),
+            eq(outfit.userId, result.userId),
+            or(
+              inArray(outfit.status, ['pending', 'failed']),
+              and(eq(outfit.status, 'running'), lt(outfit.generationStartedAt, staleThreshold))
+            )
+          )
+        )
+        .returning({ id: outfit.id });
+
+      if (locked.length === 0) {
+        // Another process owns it or already succeeded — return current state
+        const [current] = await db
+          .select({
+            status: outfit.status,
+            scoreJson: outfit.scoreJson,
+            errorCode: outfit.errorCode,
+            errorMessage: outfit.errorMessage,
+          })
+          .from(outfit)
+          .where(eq(outfit.id, id));
+        return dtoResponse(ScoreOutfitResponseDtoSchema, {
+          success: true as const,
+          data: {
+            status: current?.status ?? outfitRow.status,
+            score: current?.scoreJson ?? outfitRow.scoreJson,
+            errorCode: current?.errorCode ?? outfitRow.errorCode,
+            errorMessage: current?.errorMessage ?? outfitRow.errorMessage,
+          },
+        });
+      }
+
+      try {
+        const [avatarRow] = await db
+          .select({
+            id: avatar.id,
+            bodyProfileJson: avatar.bodyProfileJson,
+            photoUploadId: avatar.photoUploadId,
+          })
+          .from(avatar)
+          .where(and(eq(avatar.id, outfitRow.avatarId), eq(avatar.userId, result.userId)));
+
+        if (!avatarRow) {
+          await setOutfitFailed(id, 'AVATAR_NOT_FOUND', 'Avatar not found');
+          return scoreFailResponse('AVATAR_NOT_FOUND', 'Avatar not found');
+        }
+
+        let avatarProfile = avatarRow.bodyProfileJson;
+        if (!avatarProfile && avatarRow.photoUploadId) {
+          const [analysis] = await db
+            .select({ responseJson: avatarAnalysis.responseJson })
+            .from(avatarAnalysis)
+            .where(eq(avatarAnalysis.avatarId, avatarRow.id))
+            .orderBy(desc(avatarAnalysis.createdAt))
+            .limit(1);
+          if (analysis) {
+            const resp = analysis.responseJson as { success?: boolean; data?: unknown };
+            if (resp.success && resp.data) {
+              avatarProfile = resp.data;
+            }
+          }
+        }
+
+        if (!avatarProfile) {
+          const msg = 'Avatar has not been analyzed yet. Please analyze the avatar first.';
+          await setOutfitFailed(id, 'AVATAR_NOT_ANALYZED', msg);
+          return scoreFailResponse('AVATAR_NOT_ANALYZED', msg);
+        }
+
+        const garmentRows = await db
+          .select({
+            name: garment.name,
+            category: garment.category,
+            garmentProfileJson: garment.garmentProfileJson,
+          })
+          .from(outfitItem)
+          .innerJoin(garment, eq(outfitItem.garmentId, garment.id))
+          .where(eq(outfitItem.outfitId, id));
+
+        const garmentInputs = garmentRows.map((g) => ({
+          name: g.name,
+          category: g.category,
+          garmentProfile: g.garmentProfileJson,
+        }));
+
+        const scoreResult = await scoreOutfit({
+          avatarProfile,
+          occasion: outfitRow.occasion,
+          garments: garmentInputs,
+        });
+
+        await db
+          .update(outfit)
+          .set({
+            status: 'succeeded',
+            scoreJson: scoreResult as unknown as Record<string, unknown>,
+            errorCode: null,
+            errorMessage: null,
+          })
+          .where(eq(outfit.id, id));
+
+        return dtoResponse(ScoreOutfitResponseDtoSchema, {
+          success: true as const,
+          data: {
+            status: 'succeeded' as const,
+            score: scoreResult,
+            errorCode: null,
+            errorMessage: null,
+          },
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const code = 'SCORE_GENERATION_ERROR';
+        log.error({ outfitId: id, error: message }, 'score generation failed');
+        await setOutfitFailed(id, code, message);
+        return scoreFailResponse(code, message);
+      }
+    },
+  },
+
+  '/api/outfits/:id/tryon': {
+    async POST(req) {
+      const result = await requireUser(req);
+      if (result instanceof Response) return result;
+      const id = req.params.id;
+      if (!id) return apiErr({ message: 'Missing id' }, 400);
+
+      const [outfitRow] = await db
+        .select({
+          id: outfit.id,
+          userId: outfit.userId,
+          tryonKey: outfit.tryonKey,
+          avatarId: outfit.avatarId,
+        })
+        .from(outfit)
+        .where(and(eq(outfit.id, id), eq(outfit.userId, result.userId)));
+      if (!outfitRow) return apiErr({ message: 'Not found' }, 404);
+
+      let [tryonRow] = await db
+        .select()
+        .from(tryon)
+        .where(and(eq(tryon.userId, result.userId), eq(tryon.tryonKey, outfitRow.tryonKey)));
+
+      if (!tryonRow) {
+        await db
+          .insert(tryon)
+          .values({
+            id: crypto.randomUUID(),
+            userId: result.userId,
+            avatarId: outfitRow.avatarId,
+            tryonKey: outfitRow.tryonKey,
+            status: 'pending',
+          })
+          .onConflictDoNothing({ target: [tryon.userId, tryon.tryonKey] });
+
+        [tryonRow] = await db
+          .select()
+          .from(tryon)
+          .where(and(eq(tryon.userId, result.userId), eq(tryon.tryonKey, outfitRow.tryonKey)));
+
+        if (!tryonRow) {
+          return apiErr({ message: 'Failed to create tryon record' }, 500);
+        }
+      }
+
+      const staleThreshold = sql`now() - interval '5 minutes'`;
+      const locked = await db
+        .update(tryon)
+        .set({
+          status: 'running',
+          errorCode: null,
+          errorMessage: null,
+          generationStartedAt: sql`now()`,
+        })
+        .where(
+          and(
+            eq(tryon.id, tryonRow.id),
+            eq(tryon.userId, result.userId),
+            or(
+              inArray(tryon.status, ['pending', 'failed']),
+              and(eq(tryon.status, 'running'), lt(tryon.generationStartedAt, staleThreshold))
+            )
+          )
+        )
+        .returning({ id: tryon.id });
+
+      if (locked.length === 0) {
+        // Already running or succeeded
+        const [current] = await db.select().from(tryon).where(eq(tryon.id, tryonRow.id));
+        const t = current ?? tryonRow;
+        return tryonResponse(t.id, t.status, t.imageUploadId, t.errorCode, t.errorMessage);
+      }
+
+      try {
+        // Fetch avatar photo upload ID
+        const [avatarRow] = await db
+          .select({ photoUploadId: avatar.photoUploadId })
+          .from(avatar)
+          .where(eq(avatar.id, outfitRow.avatarId));
+
+        if (!avatarRow?.photoUploadId) {
+          throw new Error('Avatar has no photo uploaded');
+        }
+
+        // Fetch garment data (upload ID, bbox, name, category) for this outfit
+        const garmentRows = await db
+          .select({
+            uploadId: garment.uploadId,
+            bboxNorm: garment.bboxNorm,
+            name: garment.name,
+            category: garment.category,
+          })
+          .from(outfitItem)
+          .innerJoin(garment, eq(outfitItem.garmentId, garment.id))
+          .where(eq(outfitItem.outfitId, outfitRow.id));
+
+        if (garmentRows.length === 0) {
+          throw new Error('No garments found for this outfit');
+        }
+
+        // Generate AI try-on image
+        const tryonResult = await generateTryon({
+          avatarUploadId: avatarRow.photoUploadId,
+          garments: garmentRows.map((g) => ({
+            uploadId: g.uploadId,
+            bboxNorm: g.bboxNorm ?? null,
+            name: g.name,
+            category: g.category,
+          })),
+          userId: result.userId,
+        });
+
+        await db
+          .update(tryon)
+          .set({
+            status: 'succeeded',
+            imageUploadId: tryonResult.uploadId,
+            errorCode: null,
+            errorMessage: null,
+          })
+          .where(eq(tryon.id, tryonRow.id));
+
+        return tryonResponse(tryonRow.id, 'succeeded', tryonResult.uploadId, null, null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const code = 'TRYON_GENERATION_ERROR';
+        log.error({ tryonId: tryonRow.id, error: message }, 'tryon generation failed');
+
+        await db
+          .update(tryon)
+          .set({
+            status: 'failed',
+            errorCode: code,
+            errorMessage: message.length > 500 ? message.slice(0, 500) : message,
+          })
+          .where(eq(tryon.id, tryonRow.id));
+
+        return tryonResponse(tryonRow.id, 'failed', null, code, message);
+      }
+    },
+  },
 });
+
+async function setOutfitFailed(outfitId: string, errorCode: string, errorMessage: string) {
+  await db
+    .update(outfit)
+    .set({
+      status: 'failed',
+      errorCode,
+      errorMessage: errorMessage.length > 500 ? errorMessage.slice(0, 500) : errorMessage,
+    })
+    .where(eq(outfit.id, outfitId));
+}
+
+function scoreFailResponse(errorCode: string, errorMessage: string): Response {
+  return dtoResponse(ScoreOutfitResponseDtoSchema, {
+    success: true as const,
+    data: {
+      status: 'failed' as const,
+      score: null,
+      errorCode,
+      errorMessage,
+    },
+  });
+}
+
+function tryonResponse(
+  id: string,
+  status: string,
+  imageUploadId: string | null,
+  errorCode: string | null,
+  errorMessage: string | null
+): Response {
+  return dtoResponse(TryonOutfitResponseDtoSchema, {
+    success: true as const,
+    data: {
+      id,
+      status,
+      imageUrl: imageUploadId ? uploadImageUrl(imageUploadId) : null,
+      errorCode,
+      errorMessage,
+    },
+  });
+}

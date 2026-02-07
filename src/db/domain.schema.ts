@@ -4,14 +4,21 @@ import {
   index,
   integer,
   jsonb,
+  pgEnum,
   pgTable,
-  primaryKey,
   real,
   text,
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { user } from './auth.schema';
+
+export const generationStatusEnum = pgEnum('generation_status', [
+  'pending',
+  'running',
+  'succeeded',
+  'failed',
+]);
 
 const timestamps = {
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -144,8 +151,11 @@ export const garmentDetection = pgTable(
   ]
 );
 
-export const outfitAnalysis = pgTable(
-  'outfit_analysis',
+// ============================================================
+// OUTFITS — outfit combinations with score
+// ============================================================
+export const outfit = pgTable(
+  'outfit',
   {
     id: text('id').primaryKey(),
     userId: text('user_id')
@@ -154,65 +164,30 @@ export const outfitAnalysis = pgTable(
     avatarId: text('avatar_id')
       .notNull()
       .references(() => avatar.id, { onDelete: 'cascade' }),
-    garmentId: text('garment_id')
-      .notNull()
-      .references(() => garment.id, { onDelete: 'cascade' }),
     occasion: text('occasion').notNull(),
-    modelVersion: text('model_version').notNull().default('gemini-mvp-v1'),
-    scoreJson: jsonb('score_json').notNull(),
+    outfitKey: text('outfit_key').notNull(),
+    tryonKey: text('tryon_key').notNull(),
+    status: generationStatusEnum('status').notNull().default('pending'),
+    scoreJson: jsonb('score_json'),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    generationStartedAt: timestamp('generation_started_at'),
     ...timestamps,
   },
   (table) => [
-    uniqueIndex('outfit_analysis_avatar_garment_occasion_version_idx').on(
-      table.avatarId,
-      table.garmentId,
-      table.occasion,
-      table.modelVersion
-    ),
-    index('outfit_analysis_user_id_idx').on(table.userId),
+    uniqueIndex('outfit_user_outfit_key_idx').on(table.userId, table.outfitKey),
+    index('outfit_user_id_idx').on(table.userId),
+    index('outfit_avatar_id_idx').on(table.avatarId),
   ]
 );
 
-export const tryonResult = pgTable(
-  'tryon_result',
+// ============================================================
+// OUTFIT ITEMS — many-to-many: outfit ↔ garment
+// ============================================================
+export const outfitItem = pgTable(
+  'outfit_item',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
-    avatarPhotoKey: text('avatar_photo_key').notNull(),
-    garmentPhotoKey: text('garment_photo_key').notNull(),
-    modelVersion: text('model_version').notNull().default('gemini-mvp-v1'),
-    resultImageKey: text('result_image_key').notNull(),
-    ...timestamps,
-  },
-  (table) => [
-    uniqueIndex('tryon_result_avatar_garment_version_idx').on(
-      table.avatarPhotoKey,
-      table.garmentPhotoKey,
-      table.modelVersion
-    ),
-    index('tryon_result_user_id_idx').on(table.userId),
-  ]
-);
-
-export const outfit = pgTable('outfit', {
-  id: text('id').primaryKey(),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  avatarId: text('avatar_id')
-    .notNull()
-    .references(() => avatar.id, { onDelete: 'cascade' }),
-  occasion: text('occasion').notNull(),
-  resultImageKey: text('result_image_key'),
-  scoreJson: jsonb('score_json'),
-  ...timestamps,
-});
-
-export const outfitGarment = pgTable(
-  'outfit_garment',
-  {
     outfitId: text('outfit_id')
       .notNull()
       .references(() => outfit.id, { onDelete: 'cascade' }),
@@ -221,10 +196,42 @@ export const outfitGarment = pgTable(
       .references(() => garment.id, { onDelete: 'cascade' }),
   },
   (table) => [
-    primaryKey({ columns: [table.outfitId, table.garmentId] }),
-    index('outfit_garment_outfit_id_idx').on(table.outfitId),
+    uniqueIndex('outfit_item_outfit_garment_idx').on(table.outfitId, table.garmentId),
+    index('outfit_item_outfit_id_idx').on(table.outfitId),
   ]
 );
+
+// ============================================================
+// TRYONS — cached try-on results (by avatar + garments, no occasion)
+// ============================================================
+export const tryon = pgTable(
+  'tryon',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    avatarId: text('avatar_id')
+      .notNull()
+      .references(() => avatar.id, { onDelete: 'cascade' }),
+    tryonKey: text('tryon_key').notNull(),
+    status: generationStatusEnum('status').notNull().default('pending'),
+    imageUploadId: text('image_upload_id').references(() => upload.id, { onDelete: 'set null' }),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    generationStartedAt: timestamp('generation_started_at'),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('tryon_user_tryon_key_idx').on(table.userId, table.tryonKey),
+    index('tryon_user_id_idx').on(table.userId),
+    index('tryon_avatar_id_idx').on(table.avatarId),
+  ]
+);
+
+// ============================================================
+// RELATIONS
+// ============================================================
 
 // Relations: user -> many domain entities (separate from auth userRelations)
 export const userDomainRelations = relations(user, ({ many }) => ({
@@ -232,9 +239,8 @@ export const userDomainRelations = relations(user, ({ many }) => ({
   avatarAnalyses: many(avatarAnalysis),
   garments: many(garment),
   garmentDetections: many(garmentDetection),
-  outfitAnalyses: many(outfitAnalysis),
-  tryonResults: many(tryonResult),
   outfits: many(outfit),
+  tryons: many(tryon),
   uploads: many(upload),
 }));
 
@@ -248,6 +254,8 @@ export const avatarRelations = relations(avatar, ({ one, many }) => ({
     references: [upload.id],
   }),
   analyses: many(avatarAnalysis),
+  outfits: many(outfit),
+  tryons: many(tryon),
 }));
 
 export const avatarAnalysisRelations = relations(avatarAnalysis, ({ one }) => ({
@@ -283,35 +291,19 @@ export const garmentDetectionRelations = relations(garmentDetection, ({ one }) =
   }),
 }));
 
-export const outfitAnalysisRelations = relations(outfitAnalysis, ({ one }) => ({
-  user: one(user, {
-    fields: [outfitAnalysis.userId],
-    references: [user.id],
-  }),
-  avatar: one(avatar, {
-    fields: [outfitAnalysis.avatarId],
-    references: [avatar.id],
-  }),
-  garment: one(garment, {
-    fields: [outfitAnalysis.garmentId],
-    references: [garment.id],
-  }),
-}));
-
-export const tryonResultRelations = relations(tryonResult, ({ one }) => ({
-  user: one(user, {
-    fields: [tryonResult.userId],
-    references: [user.id],
-  }),
-}));
-
 export const outfitRelations = relations(outfit, ({ one, many }) => ({
   user: one(user, { fields: [outfit.userId], references: [user.id] }),
   avatar: one(avatar, { fields: [outfit.avatarId], references: [avatar.id] }),
-  outfitGarments: many(outfitGarment),
+  outfitItems: many(outfitItem),
 }));
 
-export const outfitGarmentRelations = relations(outfitGarment, ({ one }) => ({
-  outfit: one(outfit, { fields: [outfitGarment.outfitId], references: [outfit.id] }),
-  garment: one(garment, { fields: [outfitGarment.garmentId], references: [garment.id] }),
+export const outfitItemRelations = relations(outfitItem, ({ one }) => ({
+  outfit: one(outfit, { fields: [outfitItem.outfitId], references: [outfit.id] }),
+  garment: one(garment, { fields: [outfitItem.garmentId], references: [garment.id] }),
+}));
+
+export const tryonRelations = relations(tryon, ({ one }) => ({
+  user: one(user, { fields: [tryon.userId], references: [user.id] }),
+  avatar: one(avatar, { fields: [tryon.avatarId], references: [avatar.id] }),
+  imageUpload: one(upload, { fields: [tryon.imageUploadId], references: [upload.id] }),
 }));

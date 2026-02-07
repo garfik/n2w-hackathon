@@ -50,6 +50,20 @@
       "when": 1770240000000,
       "tag": "0006_garments_upload_detection",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1770500000000,
+      "tag": "0007_outfits_tryons_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1770468434024,
+      "tag": "0008_minor_gauntlet",
+      "breakpoints": true
     }
   ]
 }

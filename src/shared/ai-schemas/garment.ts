@@ -41,6 +41,7 @@ export const DETECT_MATERIAL = [
   'cotton',
   'leather',
   'synthetic',
+  'linen',
   'unknown',
 ] as const;
 export const DETECT_FORMALITY = ['casual', 'smart_casual', 'formal', 'unknown'] as const;
@@ -132,6 +133,7 @@ export const GarmentProfileSchema = z.object({
     'wool',
     'leather',
     'synthetic',
+    'linen',
     'other',
     'unknown',
   ]),

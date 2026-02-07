@@ -1,8 +1,9 @@
 import { createHash } from 'crypto';
 
 /**
- * Compute SHA-256 hash of a buffer and return as hex string.
+ * Compute SHA-256 hash and return as hex string.
  */
-export function sha256(buffer: Buffer | Uint8Array): string {
-  return createHash('sha256').update(buffer).digest('hex');
+export function sha256(input: string | Buffer | Uint8Array): string {
+  const h = createHash('sha256');
+  return (typeof input === 'string' ? h.update(input, 'utf8') : h.update(input)).digest('hex');
 }

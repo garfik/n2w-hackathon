@@ -81,7 +81,7 @@ const PROFILE_FIELD_OPTIONS: Record<string, { label: string; options: string[] }
   },
   material_guess: {
     label: 'Material',
-    options: ['denim', 'knit', 'cotton', 'leather', 'synthetic', 'unknown'],
+    options: ['denim', 'knit', 'cotton', 'leather', 'synthetic', 'linen', 'unknown'],
   },
   formality: {
     label: 'Formality',

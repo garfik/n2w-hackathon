@@ -33,6 +33,19 @@ import {
   type CreateGarmentsBody,
   type UpdateGarmentBody,
 } from '@shared/dtos/garment';
+import {
+  CreateOutfitResponseDtoSchema,
+  ListOutfitsResponseDtoSchema,
+  GetOutfitResponseDtoSchema,
+  ScoreOutfitResponseDtoSchema,
+  TryonOutfitResponseDtoSchema,
+  type OutfitListItemDto,
+  type OutfitDetailDto,
+  type OutfitGarmentDto,
+  type TryonDto,
+  type ScoreResultDto,
+  type CreateOutfitResponseDto,
+} from '@shared/dtos/outfit';
 import { apiErrorSchema } from '@shared/api-response';
 
 const credentials: RequestCredentials = 'include';
@@ -204,28 +217,46 @@ export async function deleteAvatar(avatarId: string): Promise<{ deletedOutfitsCo
   return parsed.data.data;
 }
 
-// --- Outfits (minimal types, no shared DTO yet) ---
+// --- Outfits ---
 
-export type OutfitListItem = { id: string; avatarId: string; occasion: string; createdAt: string };
+export type OutfitListItem = OutfitListItemDto;
+export type OutfitDetailGarment = OutfitGarmentDto;
+export type OutfitDetail = OutfitDetailDto;
+export type ScoreResult = ScoreResultDto;
+export type TryonResult = TryonDto;
 
-export type OutfitDetailGarment = { id: string; name: string; thumbnailUrl: string | null };
-export type OutfitDetail = {
-  id: string;
+export type CreateOutfitParams = {
+  avatarId: string;
+  garmentIds: string[];
   occasion: string;
-  resultImageUrl: string | null;
-  scoreJson: unknown;
-  garments: OutfitDetailGarment[];
 };
 
+export type CreateOutfitResult = CreateOutfitResponseDto['data'];
+
+export async function createOutfit(params: CreateOutfitParams): Promise<CreateOutfitResult> {
+  const res = await fetch(`/api/avatars/${encodeURIComponent(params.avatarId)}/outfits`, {
+    method: 'POST',
+    credentials,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      garmentIds: params.garmentIds,
+      occasion: params.occasion,
+    }),
+  });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Create outfit failed');
+  const parsed = CreateOutfitResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid create outfit response');
+  return parsed.data.data;
+}
+
 export async function listOutfits(avatarId: string): Promise<OutfitListItem[]> {
-  const url = new URL('/api/outfits', window.location.origin);
-  url.searchParams.set('avatarId', avatarId);
-  const res = await fetch(url.toString(), { credentials });
+  const res = await fetch(`/api/avatars/${encodeURIComponent(avatarId)}/outfits`, { credentials });
   const raw = await res.json();
   if (!res.ok) parseErrorResponse(raw, 'Failed to load outfits');
-  const data = raw as { success?: boolean; data?: { outfits?: OutfitListItem[] } };
-  if (!data.data?.outfits) return [];
-  return data.data.outfits;
+  const parsed = ListOutfitsResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid list outfits response');
+  return parsed.data.data.outfits;
 }
 
 export async function getOutfit(outfitId: string): Promise<OutfitDetail> {
@@ -235,9 +266,33 @@ export async function getOutfit(outfitId: string): Promise<OutfitDetail> {
     if (res.status === 404) throw new Error('Outfit not found');
     parseErrorResponse(raw, 'Failed to load outfit');
   }
-  const data = raw as { success?: boolean; data?: { outfit?: OutfitDetail } };
-  if (!data.data?.outfit) throw new Error('Invalid outfit response');
-  return data.data.outfit;
+  const parsed = GetOutfitResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid outfit response');
+  return parsed.data.data.outfit;
+}
+
+export async function generateScore(outfitId: string): Promise<ScoreResult> {
+  const res = await fetch(`/api/outfits/${encodeURIComponent(outfitId)}/score`, {
+    method: 'POST',
+    credentials,
+  });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Score generation failed');
+  const parsed = ScoreOutfitResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid score response');
+  return parsed.data.data;
+}
+
+export async function generateTryon(outfitId: string): Promise<TryonResult> {
+  const res = await fetch(`/api/outfits/${encodeURIComponent(outfitId)}/tryon`, {
+    method: 'POST',
+    credentials,
+  });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Tryon generation failed');
+  const parsed = TryonOutfitResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid tryon response');
+  return parsed.data.data;
 }
 
 // --- Garments ---
