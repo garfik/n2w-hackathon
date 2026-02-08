@@ -5,6 +5,7 @@ import {
   UpdateAvatarResponseDtoSchema,
   DeleteAvatarResponseDtoSchema,
   AnalyzeAvatarResponseDtoSchema,
+  GenerateAvatarImageResponseDtoSchema,
   type AvatarDto,
   type CreateAvatarParams,
   type UpdateAvatarBody,
@@ -13,6 +14,7 @@ import {
   type AnalyzeAvatarSuccessDto,
   type AnalyzeAvatarErrorDto,
   type AnalyzeAvatarResponseDto,
+  type GenerateAvatarImageResponseDto,
 } from '@shared/dtos/avatar';
 import {
   ListGarmentsResponseDtoSchema,
@@ -87,6 +89,30 @@ export type AnalyzeErrorResponse = AnalyzeAvatarErrorDto;
 export type AnalyzeResponse = AnalyzeAvatarResponseDto;
 
 export type AnalyzeAvatarParams = { avatarId: string };
+
+export type GenerateAvatarImageParams = {
+  bodyPhotoUploadId: string;
+  facePhotoUploadId: string;
+};
+
+export async function generateAvatarImage(
+  params: GenerateAvatarImageParams
+): Promise<GenerateAvatarImageResponseDto> {
+  const res = await fetch('/api/avatars/generate-image', {
+    method: 'POST',
+    credentials,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      bodyPhotoUploadId: params.bodyPhotoUploadId,
+      facePhotoUploadId: params.facePhotoUploadId,
+    }),
+  });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Avatar image generation failed');
+  const parsed = GenerateAvatarImageResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid generate avatar image response');
+  return parsed.data;
+}
 
 export async function createAvatar(params: CreateAvatarParams): Promise<CreateAvatarResponseDto> {
   const res = await fetch('/api/avatars', {
@@ -360,3 +386,26 @@ export async function deleteGarment(garmentId: string): Promise<{ deleted: boole
   if (!parsed.success) throw new Error('Invalid delete garment response');
   return parsed.data.data;
 }
+
+/** Default export so `import n2wApi from '@client/lib/n2wApi'; n2wApi.generateAvatarImage(...)` works */
+const n2wApi = {
+  uploadFile,
+  generateAvatarImage,
+  createAvatar,
+  analyzeAvatar,
+  updateAvatar,
+  getAvatar,
+  deleteAvatar,
+  listGarments,
+  getGarment,
+  detectGarments,
+  createGarmentsFromDetections,
+  updateGarment,
+  deleteGarment,
+  createOutfit,
+  listOutfits,
+  getOutfit,
+  generateScore,
+  generateTryon,
+};
+export default n2wApi;

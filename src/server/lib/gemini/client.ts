@@ -221,9 +221,24 @@ export async function generateJson<S extends z.ZodTypeAny>(
 // Image Generation
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** A content part: either text or an inline image. */
+export type ContentPart =
+  | { text: string }
+  | { inlineData: { data: string; mimeType: string } };
+
 export type GenerateImageOptions = GenerateOptions & {
   prompt: string;
   images?: ImageInput[];
+  /**
+   * If set, overrides `prompt` + `images` with custom interleaved content parts.
+   * Use this when you need text labels between images so the model knows which is which.
+   */
+  contentParts?: ContentPart[];
+  /**
+   * Response modalities. Default: ['image'].
+   * Set to ['text', 'image'] when the model needs to reason before generating.
+   */
+  responseModalities?: string[];
 };
 
 export type GeneratedImage = {
@@ -239,7 +254,9 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
   const {
     prompt,
     images,
-    model = process.env.GEMINI_MODEL_IMAGE ?? 'gemini-2.0-flash-exp-image-generation',
+    contentParts,
+    responseModalities = ['image'],
+    model = 'gemini-2.5-flash-image',
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = options;
 
@@ -254,14 +271,19 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
     try {
       const ai = getClient();
 
-      const contents: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> =
-        [{ text: prompt }];
-
-      if (images?.length) {
-        for (const img of images) {
-          contents.push({
-            inlineData: { data: img.base64, mimeType: img.mimeType },
-          });
+      // If caller provides custom interleaved parts, use them directly.
+      // Otherwise fall back to prompt-first, then images.
+      let contents: ContentPart[];
+      if (contentParts?.length) {
+        contents = contentParts;
+      } else {
+        contents = [{ text: prompt }];
+        if (images?.length) {
+          for (const img of images) {
+            contents.push({
+              inlineData: { data: img.base64, mimeType: img.mimeType },
+            });
+          }
         }
       }
 
@@ -269,7 +291,7 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
         model,
         contents,
         config: {
-          responseModalities: ['image'],
+          responseModalities,
           abortSignal: controller.signal,
         },
       });

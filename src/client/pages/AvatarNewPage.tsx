@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@components/ui/select';
 import { Progress } from '@components/ui/progress';
-import { analyzeAvatar, type AnalyzeErrorResponse } from '@client/lib/n2wApi';
+import { analyzeAvatar, generateAvatarImage, type AnalyzeErrorResponse } from '@client/lib/n2wApi';
 import { useCreateAvatar, useUpdateAvatar } from '@client/lib/useAvatars';
 import type { AvatarBodyProfile, AvatarBodyProfileClean } from '@shared/dtos/avatar';
 import { ImageUploadCard, type UploadResult } from '@client/components/ImageUploadCard';
@@ -108,7 +108,8 @@ export function AvatarNewPage() {
   const navigate = useNavigate();
   const createMutation = useCreateAvatar();
   const updateMutation = useUpdateAvatar();
-  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
+  const [bodyUploadResult, setBodyUploadResult] = useState<UploadResult | null>(null);
+  const [faceUploadResult, setFaceUploadResult] = useState<UploadResult | null>(null);
   const [avatarName, setAvatarName] = useState('');
   const [avatarId, setAvatarId] = useState<string | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('idle');
@@ -118,24 +119,30 @@ export function AvatarNewPage() {
   const [createLoading, setCreateLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const createSubmittingRef = useRef(false);
 
   const handleCreateAvatar = async (e: FormEvent) => {
     e.preventDefault();
-    if (!uploadResult) return;
+    if (!bodyUploadResult || !faceUploadResult) return;
     if (createSubmittingRef.current) return;
     createSubmittingRef.current = true;
     setCreateError(null);
     setCreateLoading(true);
     try {
+      const genResult = await generateAvatarImage({
+        bodyPhotoUploadId: bodyUploadResult.id,
+        facePhotoUploadId: faceUploadResult.id,
+      });
+      setGeneratedImageUrl(`/api/uploads/${genResult.data.uploadId}/image`);
       const newId = await createMutation.mutateAsync({
-        uploadId: uploadResult.id,
         name: avatarName.trim() || 'Avatar',
+        uploadId: genResult.data.uploadId,
       });
       setAvatarId(newId);
       setAnalysisStatus('loading');
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Create failed');
+      setCreateError(err instanceof Error ? err.message : 'Generation failed');
     } finally {
       createSubmittingRef.current = false;
       setCreateLoading(false);
@@ -191,9 +198,11 @@ export function AvatarNewPage() {
 
   const handleUploadAnother = () => {
     createSubmittingRef.current = false;
-    setUploadResult(null);
+    setBodyUploadResult(null);
+    setFaceUploadResult(null);
     setAvatarName('');
     setAvatarId(null);
+    setGeneratedImageUrl(null);
     setAnalysisStatus('idle');
     setFormProfile(null);
     setAnalysisError(null);
@@ -208,8 +217,9 @@ export function AvatarNewPage() {
     setFormProfile((prev) => (prev ? { ...prev, [key]: value } : null));
   };
 
-  const showStep1 = !avatarId && !uploadResult;
-  const showStep2 = uploadResult && !avatarId;
+  const hasBothUploads = !!bodyUploadResult && !!faceUploadResult;
+  const showStep1 = !avatarId && !hasBothUploads;
+  const showStep2 = !avatarId && hasBothUploads;
   const showAnalyzing = avatarId && analysisStatus === 'loading';
   const showError = avatarId && analysisStatus === 'error';
   const showForm = avatarId && analysisStatus === 'success' && formProfile;
@@ -223,30 +233,64 @@ export function AvatarNewPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Left: preview */}
-        <Card>
-          <CardHeader className="gap-2">
-            <CardTitle className="text-xl font-bold">Avatar photo</CardTitle>
-            <CardDescription>
-              Upload a full-body photo. One image; front-facing works best.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ImageUploadCard
-              existingUpload={uploadResult ?? undefined}
-              onUploaded={setUploadResult}
-              onClear={() => setUploadResult(null)}
-              disabled={!!avatarId}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Right: name / analyzing / form / error */}
+        {/* Left: body + face uploads */}
         <div className="space-y-4">
+          <Card>
+            <CardHeader className="gap-2">
+              <CardTitle className="text-xl font-bold">Full-body photo</CardTitle>
+              <CardDescription>
+                Upload a full-height body photo. One person, front-facing works best.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ImageUploadCard
+                existingUpload={bodyUploadResult ?? undefined}
+                onUploaded={setBodyUploadResult}
+                onClear={() => setBodyUploadResult(null)}
+                disabled={!!avatarId}
+              />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="gap-2">
+              <CardTitle className="text-xl font-bold">Face photo</CardTitle>
+              <CardDescription>Upload a detailed face close-up of the same person.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ImageUploadCard
+                existingUpload={faceUploadResult ?? undefined}
+                onUploaded={setFaceUploadResult}
+                onClear={() => setFaceUploadResult(null)}
+                disabled={!!avatarId}
+              />
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right: name / generated photo / analyzing / form / error */}
+        <div className="space-y-4">
+          {generatedImageUrl && avatarId && (
+            <Card>
+              <CardHeader className="gap-2">
+                <CardTitle className="text-xl font-bold">Generated avatar</CardTitle>
+                <CardDescription>Your avatar with the default outfit applied.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <img
+                  src={generatedImageUrl}
+                  alt="Generated avatar"
+                  className="w-full rounded-md object-contain max-h-[400px] bg-muted"
+                />
+              </CardContent>
+            </Card>
+          )}
+
           {showStep1 && (
             <Card>
               <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Select a photo to continue.</p>
+                <p className="text-sm text-muted-foreground">
+                  Upload both a full-body photo and a face close-up to continue.
+                </p>
               </CardContent>
             </Card>
           )}
@@ -255,7 +299,9 @@ export function AvatarNewPage() {
             <Card>
               <CardHeader className="gap-2">
                 <CardTitle className="text-xl font-bold">Avatar name</CardTitle>
-                <CardDescription>Give your avatar a display name.</CardDescription>
+                <CardDescription>
+                  Give your avatar a display name, then generate the avatar image.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleCreateAvatar} className="space-y-4">
@@ -277,7 +323,7 @@ export function AvatarNewPage() {
                     </p>
                   )}
                   <Button type="submit" disabled={createLoading}>
-                    {createLoading ? 'Creating…' : 'Continue'}
+                    {createLoading ? 'Generating avatar…' : 'Generate avatar'}
                   </Button>
                 </form>
               </CardContent>
@@ -325,7 +371,7 @@ export function AvatarNewPage() {
                   onClick={handleUploadAnother}
                   className="mt-2"
                 >
-                  Upload another photo
+                  Upload other photos
                 </Button>
               </AlertDescription>
             </Alert>

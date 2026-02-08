@@ -18,7 +18,10 @@ import {
   AnalyzeAvatarErrorDtoSchema,
   CreateAvatarBodySchema,
   UpdateAvatarBodySchema,
+  GenerateAvatarImageBodySchema,
+  GenerateAvatarImageResponseDtoSchema,
 } from '@shared/dtos/avatar';
+import { generateAvatarImage } from '../prompts/generateAvatarImage';
 
 /** Parse payload with schema; on validation failure return 422. */
 function parseResponseDto<T>(
@@ -82,6 +85,54 @@ export const avatarsRoutes = router({
       });
       if (!dtoResult.ok) return dtoResult.response;
       return Response.json(dtoResult.data);
+    },
+  },
+
+  '/api/avatars/generate-image': {
+    async POST(req) {
+      const contentType = req.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) {
+        return apiErr(
+          { message: 'Expected application/json with bodyPhotoUploadId and facePhotoUploadId' },
+          400
+        );
+      }
+      let rawBody: unknown;
+      try {
+        rawBody = await req.json();
+      } catch {
+        return apiErr({ message: 'Invalid JSON' }, 400);
+      }
+      const bodyParse = GenerateAvatarImageBodySchema.safeParse(rawBody);
+      if (!bodyParse.success) {
+        return apiErr({ message: 'Validation failed', issues: bodyParse.error.flatten() }, 400);
+      }
+      const { bodyPhotoUploadId, facePhotoUploadId } = bodyParse.data;
+
+      const [bodyRow, faceRow] = await Promise.all([
+        db.select().from(upload).where(eq(upload.id, bodyPhotoUploadId)),
+        db.select().from(upload).where(eq(upload.id, facePhotoUploadId)),
+      ]);
+      if (!bodyRow[0]) {
+        return apiErr({ message: 'Body photo upload not found' }, 404);
+      }
+      if (!faceRow[0]) {
+        return apiErr({ message: 'Face photo upload not found' }, 404);
+      }
+
+      try {
+        const result = await generateAvatarImage({ bodyPhotoUploadId, facePhotoUploadId });
+        const dtoResult = parseResponseDto(GenerateAvatarImageResponseDtoSchema, {
+          success: true as const,
+          data: { uploadId: result.uploadId },
+        });
+        if (!dtoResult.ok) return dtoResult.response;
+        return Response.json(dtoResult.data);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error({ err, bodyPhotoUploadId, facePhotoUploadId }, 'generate avatar image failed');
+        return apiErr({ message: message.length > 500 ? message.slice(0, 500) : message }, 502);
+      }
     },
   },
 
