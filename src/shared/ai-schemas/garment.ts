@@ -14,7 +14,14 @@ export const DETECT_CATEGORIES = [
   'headwear',
 ] as const;
 
-export const DETECT_SILHOUETTES = ['slim', 'straight', 'regular', 'oversized', 'unknown'] as const;
+export const DETECT_SILHOUETTES = [
+  'slim',
+  'straight',
+  'regular',
+  'oversized',
+  'tapered',
+  'unknown',
+] as const;
 export const DETECT_LENGTH_CLASS = [
   'cropped',
   'short',
@@ -118,7 +125,7 @@ export const GarmentProfileSchema = z.object({
     'shoes',
     'other',
   ]),
-  silhouette: z.enum(['slim', 'straight', 'relaxed', 'oversized', 'a_line', 'other']),
+  silhouette: z.enum(['slim', 'straight', 'relaxed', 'oversized', 'tapered', 'a_line', 'other']),
   length_class: z.enum(['cropped', 'regular', 'long', 'maxi', 'unknown']),
   fit_intent: z.enum(['tight', 'regular', 'oversized', 'unknown']),
   neckline: z.enum(['crew', 'v_neck', 'square', 'turtleneck', 'collar', 'strapless', 'unknown']),

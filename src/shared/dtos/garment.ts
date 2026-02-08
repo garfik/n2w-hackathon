@@ -53,6 +53,21 @@ export const DetectGarmentsResponseDtoSchema = apiSuccessSchema(
 );
 export type DetectGarmentsResponseDto = z.output<typeof DetectGarmentsResponseDtoSchema>;
 
+export const GenerateGarmentImageBodySchema = z.object({
+  uploadId: z.string(),
+  bboxNorm: BboxNormSchema,
+  category: z.string().optional(),
+  label: z.string().optional(),
+});
+export type GenerateGarmentImageBody = z.output<typeof GenerateGarmentImageBodySchema>;
+
+export const GenerateGarmentImageResponseDtoSchema = apiSuccessSchema(
+  z.object({ uploadId: z.string() })
+);
+export type GenerateGarmentImageResponseDto = z.output<
+  typeof GenerateGarmentImageResponseDtoSchema
+>;
+
 // --- Create from detections (POST /api/garments) ---
 
 export const CreateGarmentsBodySchema = z.object({
@@ -63,6 +78,7 @@ export const CreateGarmentsBodySchema = z.object({
       z.object({
         name: z.string().optional(),
         category: z.string().optional(),
+        uploadId: z.string().optional(),
       })
     )
     .optional(),

@@ -15,7 +15,7 @@ import { logger } from '@server/lib/logger';
 
 const log = logger.child({ module: 'generateAvatarImage' });
 
-export const AVATAR_IMAGE_MODEL = 'gemini-3-pro-image-preview';
+export const AVATAR_IMAGE_MODEL = process.env.AVATAR_IMAGE_MODEL || 'gemini-3-pro-image-preview';
 
 // ── Interleaved prompt segments ──
 

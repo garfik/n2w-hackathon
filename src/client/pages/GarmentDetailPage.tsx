@@ -53,7 +53,7 @@ type GarmentProfile = {
 const PROFILE_FIELD_OPTIONS: Record<string, { label: string; options: string[] }> = {
   silhouette: {
     label: 'Silhouette',
-    options: ['slim', 'straight', 'regular', 'oversized', 'unknown'],
+    options: ['slim', 'straight', 'regular', 'oversized', 'tapered', 'unknown'],
   },
   length_class: {
     label: 'Length',

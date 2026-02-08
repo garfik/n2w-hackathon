@@ -1,15 +1,22 @@
 import { eq, and, inArray, desc } from 'drizzle-orm';
+import sharp from 'sharp';
 import { router } from './router';
 import { db } from '../../db/client';
 import { garment, garmentDetection, upload } from '../../db/domain.schema';
-import { getObjectBuffer } from '../lib/storage';
+import { getObjectBuffer, putObject } from '../lib/storage';
 import { detectGarmentsFromImage } from '../prompts/detectGarments';
+import { generateGarmentImage } from '../prompts/generateGarmentImage';
+import { sha256 } from '../lib/hash';
+import { logger } from '../lib/logger';
 import { apiOk, apiErr } from './response';
 import {
   DetectGarmentsBodySchema,
   CreateGarmentsBodySchema,
   UpdateGarmentBodySchema,
+  GenerateGarmentImageBodySchema,
 } from '@shared/dtos/garment';
+
+const log = logger.child({ module: 'garments' });
 
 export const garmentsRoutes = router({
   '/api/garments': {
@@ -97,10 +104,12 @@ export const garmentsRoutes = router({
       for (const d of detections) {
         const override = overrides[d.id];
         const id = crypto.randomUUID();
+        // If override provides a clean uploadId, use it and drop bboxNorm
+        const hasCleanImage = !!override?.uploadId;
         await db.insert(garment).values({
           id,
-          uploadId: d.uploadId,
-          bboxNorm: d.bboxNorm,
+          uploadId: hasCleanImage ? override.uploadId! : d.uploadId,
+          bboxNorm: hasCleanImage ? null : d.bboxNorm,
           name: override?.name ?? d.labelGuess ?? 'Unnamed',
           category: override?.category ?? d.categoryGuess ?? null,
           garmentProfileJson: d.garmentProfileJson,
@@ -193,6 +202,132 @@ export const garmentsRoutes = router({
           garmentProfile: d.garmentProfile,
         })),
       });
+    },
+  },
+
+  '/api/garments/generate-image': {
+    async POST(req) {
+      let body: unknown;
+      try {
+        body = await req.json();
+      } catch {
+        return apiErr({ code: 'INVALID_JSON', message: 'Invalid JSON' }, 400);
+      }
+
+      const parsed = GenerateGarmentImageBodySchema.safeParse(body);
+      if (!parsed.success) {
+        return apiErr(
+          { code: 'VALIDATION_ERROR', message: parsed.error.message ?? 'Invalid body' },
+          400
+        );
+      }
+
+      const { uploadId: sourceUploadId, bboxNorm, category, label } = parsed.data;
+
+      // Deterministic cache key based on input params (sourceUploadId + bboxNorm)
+      const cacheInput = JSON.stringify({ uploadId: sourceUploadId, bboxNorm });
+      const cacheHash = sha256(cacheInput);
+      const cachedStoredKey = `garments-generated/${cacheHash}.jpg`;
+
+      // Check cache: if we already generated for this exact crop, return existing
+      const [cached] = await db
+        .select({ id: upload.id })
+        .from(upload)
+        .where(eq(upload.storedKey, cachedStoredKey));
+
+      if (cached) {
+        log.info({ uploadId: cached.id, cacheHash }, 'returning cached clean garment image');
+        return apiOk({ uploadId: cached.id });
+      }
+
+      // Load source image from S3
+      const [uploadRow] = await db
+        .select({ storedKey: upload.storedKey, storedMime: upload.storedMime })
+        .from(upload)
+        .where(eq(upload.id, sourceUploadId));
+
+      if (!uploadRow) {
+        return apiErr({ code: 'UPLOAD_NOT_FOUND', message: 'Upload not found' }, 404);
+      }
+
+      let buffer: Buffer;
+      try {
+        buffer = await getObjectBuffer(uploadRow.storedKey);
+      } catch {
+        return apiErr({ code: 'STORAGE_ERROR', message: 'Failed to load image from storage' }, 500);
+      }
+
+      // Crop to bounding box with padding
+      const BBOX_PADDING = 0.15;
+      const meta = await sharp(buffer).metadata();
+      const imgW = meta.width ?? 0;
+      const imgH = meta.height ?? 0;
+      if (imgW === 0 || imgH === 0) {
+        return apiErr({ code: 'IMAGE_ERROR', message: 'Cannot read image dimensions' }, 500);
+      }
+
+      const padX = bboxNorm.w * BBOX_PADDING;
+      const padY = bboxNorm.h * BBOX_PADDING;
+      const x1 = Math.max(0, bboxNorm.x - padX);
+      const y1 = Math.max(0, bboxNorm.y - padY);
+      const x2 = Math.min(1, bboxNorm.x + bboxNorm.w + padX);
+      const y2 = Math.min(1, bboxNorm.y + bboxNorm.h + padY);
+
+      const left = Math.round(x1 * imgW);
+      const top = Math.round(y1 * imgH);
+      const width = Math.max(1, Math.round((x2 - x1) * imgW));
+      const height = Math.max(1, Math.round((y2 - y1) * imgH));
+
+      const croppedBuffer = await sharp(buffer)
+        .extract({ left, top, width, height })
+        .jpeg({ quality: 90 })
+        .toBuffer();
+
+      log.info(
+        { sourceUploadId, category, label, cacheHash, cropW: width, cropH: height },
+        'generating clean garment image (cache miss)'
+      );
+
+      // Call the pure prompt function
+      const generated = await generateGarmentImage({
+        image: {
+          base64: croppedBuffer.toString('base64'),
+          mimeType: 'image/jpeg',
+        },
+        category: category ?? null,
+        label: label ?? null,
+      });
+
+      // Save result to S3 and create upload record
+      const imageBuffer = Buffer.from(generated.base64, 'base64');
+      const jpegBuffer = await sharp(imageBuffer).jpeg({ quality: 90 }).toBuffer();
+      const jpegMeta = await sharp(jpegBuffer).metadata();
+      const w = jpegMeta.width ?? 0;
+      const h = jpegMeta.height ?? 0;
+
+      const imageSha256 = sha256(jpegBuffer);
+      const newUploadId = crypto.randomUUID();
+
+      await putObject(cachedStoredKey, jpegBuffer, 'image/jpeg');
+
+      await db.insert(upload).values({
+        id: newUploadId,
+        originalSha256: imageSha256,
+        originalMime: generated.mimeType,
+        originalSizeBytes: imageBuffer.length,
+        storedKey: cachedStoredKey,
+        storedMime: 'image/jpeg',
+        storedSizeBytes: jpegBuffer.length,
+        width: w,
+        height: h,
+      });
+
+      log.info(
+        { uploadId: newUploadId, width: w, height: h, cacheHash },
+        'clean garment image saved'
+      );
+
+      return apiOk({ uploadId: newUploadId });
     },
   },
 

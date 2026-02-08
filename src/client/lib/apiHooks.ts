@@ -14,6 +14,7 @@ import {
   listGarments,
   getGarment,
   detectGarments,
+  generateGarmentImage,
   createGarmentsFromDetections,
   updateGarment,
   deleteGarment,
@@ -25,6 +26,8 @@ import {
   type GarmentDetail,
   type ListGarmentsParams,
   type DetectGarmentsResult,
+  type GenerateGarmentImageParams,
+  type GenerateGarmentImageResult,
   type UpdateGarmentParams,
 } from '@client/lib/n2wApi';
 import type { CreateGarmentsBody } from '@shared/dtos/garment';
@@ -121,6 +124,15 @@ export function useDetectGarments(
 ) {
   return useMutation({
     mutationFn: (uploadId: string) => detectGarments(uploadId),
+    ...options,
+  });
+}
+
+export function useGenerateGarmentImage(
+  options?: UseMutationOptions<GenerateGarmentImageResult, Error, GenerateGarmentImageParams>
+) {
+  return useMutation({
+    mutationFn: generateGarmentImage,
     ...options,
   });
 }

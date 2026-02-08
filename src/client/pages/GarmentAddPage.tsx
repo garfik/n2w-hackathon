@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent } from '@components/ui/card';
 import { Button } from '@components/ui/button';
 import { Input } from '@components/ui/input';
 import { Badge } from '@components/ui/badge';
 import { Label } from '@components/ui/label';
+import { Progress } from '@components/ui/progress';
 import {
   Select,
   SelectContent,
@@ -13,7 +14,10 @@ import {
   SelectValue,
 } from '@components/ui/select';
 import { ImageUploadCard, type UploadResult } from '@client/components/ImageUploadCard';
-import { useDetectGarments, useCreateGarmentsFromDetections } from '@client/lib/apiHooks';
+import { useDetectGarments } from '@client/lib/apiHooks';
+import { generateGarmentImage, createGarmentsFromDetections } from '@client/lib/n2wApi';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@client/lib/queryClient';
 import type { DetectionItem } from '@shared/dtos/garment';
 import { DETECT_CATEGORIES } from '@shared/ai-schemas/garment';
 import { ArrowLeft, Loader2, CheckSquare, Square } from 'lucide-react';
@@ -23,8 +27,15 @@ const CATEGORY_OPTIONS = [...DETECT_CATEGORIES];
 
 type OverridesState = Record<string, { name?: string; category?: string }>;
 
+type GeneratingState = {
+  total: number;
+  completed: number;
+  phase: 'generating' | 'saving';
+};
+
 export function GarmentAddPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [detectResult, setDetectResult] = useState<{
     uploadId: string;
@@ -33,6 +44,8 @@ export function GarmentAddPage() {
   } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [overrides, setOverrides] = useState<OverridesState>({});
+  const [generating, setGenerating] = useState<GeneratingState | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const detectMutation = useDetectGarments({
     onSuccess: (data) => {
@@ -52,18 +65,14 @@ export function GarmentAddPage() {
     },
   });
 
-  const createMutation = useCreateGarmentsFromDetections({
-    onSuccess: () => {
-      navigate('/app/garments');
-    },
-  });
-
   const handleUploaded = (result: UploadResult) => setUploadResult(result);
   const handleClearUpload = () => {
     setUploadResult(null);
     setDetectResult(null);
     setSelectedIds(new Set());
     setOverrides({});
+    setGenerating(null);
+    setSaveError(null);
   };
 
   const handleDetect = () => {
@@ -87,19 +96,62 @@ export function GarmentAddPage() {
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = useCallback(async () => {
+    if (!detectResult) return;
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    const overridesPayload: OverridesState = {};
-    ids.forEach((id) => {
-      const o = overrides[id];
-      if (o?.name !== undefined || o?.category !== undefined) overridesPayload[id] = o;
-    });
-    createMutation.mutate({
-      detectionIds: ids,
-      overrides: Object.keys(overridesPayload).length ? overridesPayload : undefined,
-    });
-  };
+
+    setSaveError(null);
+    const detectionMap = new Map(detectResult.detections.map((d) => [d.id, d]));
+    let completed = 0;
+
+    setGenerating({ total: ids.length, completed: 0, phase: 'generating' });
+
+    // Each promise: generate image → create garment immediately (no waiting for others)
+    const results = await Promise.allSettled(
+      ids.map(async (detectionId) => {
+        const detection = detectionMap.get(detectionId);
+        if (!detection) throw new Error(`Detection not found: ${detectionId}`);
+
+        const override = overrides[detectionId];
+        const result = await generateGarmentImage({
+          uploadId: detectResult.uploadId,
+          bboxNorm: detection.bbox,
+          category: override?.category ?? detection.categoryGuess ?? undefined,
+          label: override?.name ?? detection.labelGuess ?? undefined,
+        });
+
+        completed++;
+        setGenerating({ total: ids.length, completed, phase: 'generating' });
+
+        await createGarmentsFromDetections({
+          detectionIds: [detectionId],
+          overrides: {
+            [detectionId]: {
+              name: override?.name,
+              category: override?.category,
+              uploadId: result.uploadId,
+            },
+          },
+        });
+
+        return detectionId;
+      })
+    );
+
+    setGenerating(null);
+
+    const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+
+    if (succeeded > 0) {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.garments.all });
+      navigate('/app/garments');
+    } else {
+      setSaveError('Failed to save garments.');
+    }
+  }, [detectResult, selectedIds, overrides, navigate, queryClient]);
+
+  const isBusy = generating !== null;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -241,15 +293,37 @@ export function GarmentAddPage() {
             )}
           </div>
 
+          {saveError && <p className="text-sm text-destructive">{saveError}</p>}
+
+          {generating && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {generating.phase === 'generating'
+                  ? `Generating clean images... ${generating.completed}/${generating.total}`
+                  : 'Saving garments...'}
+              </div>
+              <Progress
+                value={
+                  generating.phase === 'generating'
+                    ? (generating.completed / generating.total) * 100
+                    : 100
+                }
+              />
+            </div>
+          )}
+
           <Button
             onClick={handleSave}
-            disabled={selectedIds.size === 0 || createMutation.isPending}
+            disabled={selectedIds.size === 0 || isBusy}
             className="w-full"
           >
-            {createMutation.isPending ? (
+            {isBusy ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Saving...
+                {generating?.phase === 'generating'
+                  ? `Generating... ${generating.completed}/${generating.total}`
+                  : 'Saving...'}
               </>
             ) : (
               `Save ${selectedIds.size} garment${selectedIds.size === 1 ? '' : 's'}`

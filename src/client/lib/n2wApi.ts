@@ -23,11 +23,13 @@ import {
   CreateGarmentsResponseDtoSchema,
   UpdateGarmentResponseDtoSchema,
   DeleteGarmentResponseDtoSchema,
+  GenerateGarmentImageResponseDtoSchema,
   type GarmentListItem,
   type GarmentDetail,
   type DetectionItem,
   type CreateGarmentsBody,
   type UpdateGarmentBody,
+  type GenerateGarmentImageBody,
 } from '@shared/dtos/garment';
 import {
   CreateOutfitResponseDtoSchema,
@@ -321,6 +323,25 @@ export async function detectGarments(uploadId: string): Promise<DetectGarmentsRe
   return parsed.data.data;
 }
 
+export type GenerateGarmentImageParams = GenerateGarmentImageBody;
+export type GenerateGarmentImageResult = { uploadId: string };
+
+export async function generateGarmentImage(
+  params: GenerateGarmentImageParams
+): Promise<GenerateGarmentImageResult> {
+  const res = await fetch('/api/garments/generate-image', {
+    method: 'POST',
+    credentials,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Garment image generation failed');
+  const parsed = GenerateGarmentImageResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid generate garment image response');
+  return parsed.data.data;
+}
+
 export async function getGarment(garmentId: string): Promise<GarmentDetail> {
   const res = await fetch(`/api/garments/${encodeURIComponent(garmentId)}`, { credentials });
   const raw = await res.json();
@@ -399,6 +420,7 @@ const n2wApi = {
   listGarments,
   getGarment,
   detectGarments,
+  generateGarmentImage,
   createGarmentsFromDetections,
   updateGarment,
   deleteGarment,
