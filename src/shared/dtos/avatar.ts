@@ -51,6 +51,28 @@ export type GetAvatarResponseDto = z.output<typeof GetAvatarResponseDtoSchema>;
 export const CreateAvatarResponseDtoSchema = apiSuccessSchema(z.object({ id: z.string() }));
 export type CreateAvatarResponseDto = z.output<typeof CreateAvatarResponseDtoSchema>;
 
+// --- Generate avatar image (body + face → one composite photo) ---
+export const GenerateAvatarImageBodySchema = z.object({
+  bodyPhotoUploadId: z.string().uuid(),
+  facePhotoUploadId: z.string().uuid(),
+});
+export type GenerateAvatarImageBody = z.output<typeof GenerateAvatarImageBodySchema>;
+
+const GenerateAvatarImageDebugSchema = z.object({
+  processedBodyBase64: z.string(),
+  processedBodyMime: z.string(),
+  processedFaceBase64: z.string(),
+  processedFaceMime: z.string(),
+});
+
+export const GenerateAvatarImageResponseDtoSchema = apiSuccessSchema(
+  z.object({
+    uploadId: z.string().uuid(),
+    debug: GenerateAvatarImageDebugSchema.optional(),
+  })
+);
+export type GenerateAvatarImageResponseDto = z.output<typeof GenerateAvatarImageResponseDtoSchema>;
+
 export const UpdateAvatarResponseDtoSchema = apiSuccessSchema(
   z.object({ avatar: AvatarDtoSchema })
 );

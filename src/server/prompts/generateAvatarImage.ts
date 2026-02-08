@@ -1,0 +1,158 @@
+/**
+ * Generate avatar image: body + face photos + default outfit → one composite photo.
+ * Preprocesses body and face (remove background, crop), then Gemini image generation.
+ */
+
+import { join } from 'path';
+import { eq } from 'drizzle-orm';
+import sharp from 'sharp';
+import { generateImage, type ContentPart } from '@server/lib/gemini';
+import { getObjectBuffer, putObject } from '@server/lib/storage';
+import { db } from '../../db/client';
+import { upload } from '../../db/domain.schema';
+import { sha256 } from '@server/lib/hash';
+import { logger } from '@server/lib/logger';
+import { preprocessAvatarPhoto } from '@server/lib/image/preprocessAvatarPhoto';
+
+const log = logger.child({ module: 'generateAvatarImage' });
+
+export const AVATAR_IMAGE_MODEL = 'gemini-3-pro-image-preview';
+
+// ── Interleaved prompt segments ──
+
+const INTRO_AND_BODY = `Edit the following person photo to change their clothes and refine their face.
+Here is the person's FULL BODY photo — use this for body shape, proportions, build, and skin tone. Ignore their current clothing:`;
+
+const FACE_INTRO = `Here is a CLOSE-UP FACE photo of the same person — use this to refine the face in the output. Copy exact facial features, hair style, and hair color from this close-up:`;
+
+const OUTFIT_INTRO = `Here is the TARGET OUTFIT — redress the person in exactly these clothes. Copy the garment colors, patterns, and silhouettes. Fit them naturally to the person's body from the first photo:`;
+
+const FINAL_INSTRUCTION = `Now generate the final image:
+- Take the person from the first photo (body shape, proportions, skin tone)
+- Apply the face details from the second photo (facial features, hair)
+- Dress them in the outfit from the third photo
+- Neutral front-facing standing pose, head to feet visible
+- Clean solid white or light gray background
+- ONE person, ONE image, no text, no watermark
+- IMPORTANT: the body build must come from the FIRST photo, NOT from the outfit photo`;
+
+export type GenerateAvatarImageInput = {
+  bodyPhotoUploadId: string;
+  facePhotoUploadId: string;
+};
+
+export type GenerateAvatarImageResult = {
+  uploadId: string;
+  /** Temporary debug: processed images sent to Gemini (when DEBUG_AVATAR_GENERATION=true) */
+  debug?: {
+    processedBodyBase64: string;
+    processedBodyMime: string;
+    processedFaceBase64: string;
+    processedFaceMime: string;
+  };
+};
+
+async function loadBufferFromUpload(uploadId: string): Promise<{ buffer: Buffer; mime: string }> {
+  const [row] = await db
+    .select({ storedKey: upload.storedKey, storedMime: upload.storedMime })
+    .from(upload)
+    .where(eq(upload.id, uploadId));
+
+  if (!row) {
+    throw new Error(`Upload record not found: ${uploadId}`);
+  }
+
+  const buffer = await getObjectBuffer(row.storedKey);
+  return { buffer, mime: row.storedMime };
+}
+
+function getDefaultOutfitPath(): string {
+  return join(import.meta.dir, '../../client/assets/default_outfit.jpg');
+}
+
+export async function generateAvatarImage(
+  input: GenerateAvatarImageInput
+): Promise<GenerateAvatarImageResult> {
+  const { bodyPhotoUploadId, facePhotoUploadId } = input;
+
+  log.info({ bodyPhotoUploadId, facePhotoUploadId }, 'loading and preprocessing avatar photos');
+
+  const [bodyData, faceData] = await Promise.all([
+    loadBufferFromUpload(bodyPhotoUploadId),
+    loadBufferFromUpload(facePhotoUploadId),
+  ]);
+
+  const [processedBody, processedFace] = await Promise.all([
+    preprocessAvatarPhoto(bodyData.buffer, bodyData.mime),
+    preprocessAvatarPhoto(faceData.buffer, faceData.mime),
+  ]);
+
+  const outfitPath = getDefaultOutfitPath();
+  const outfitFile = Bun.file(outfitPath);
+  if (!(await outfitFile.exists())) {
+    throw new Error(`Default outfit not found: ${outfitPath}`);
+  }
+  const outfitBuffer = Buffer.from(await outfitFile.arrayBuffer());
+
+  // Interleave text→image so Gemini sees: body intro → body img → face intro → face img → outfit intro → outfit img → final task
+  const contentParts: ContentPart[] = [
+    { text: INTRO_AND_BODY },
+    { inlineData: { data: processedBody.buffer.toString('base64'), mimeType: processedBody.mimeType } },
+    { text: FACE_INTRO },
+    { inlineData: { data: processedFace.buffer.toString('base64'), mimeType: processedFace.mimeType } },
+    { text: OUTFIT_INTRO },
+    { inlineData: { data: outfitBuffer.toString('base64'), mimeType: 'image/jpeg' } },
+    { text: FINAL_INSTRUCTION },
+  ];
+
+  log.info({ partCount: contentParts.length }, 'calling Gemini for avatar image generation');
+
+  const generated = await generateImage({
+    prompt: '', // unused when contentParts is set
+    contentParts,
+    responseModalities: ['text', 'image'],
+    model: AVATAR_IMAGE_MODEL,
+    timeoutMs: 90_000,
+  });
+
+  log.info({ mimeType: generated.mimeType }, 'avatar image generated, saving to storage');
+
+  const imageBuffer = Buffer.from(generated.base64, 'base64');
+  const metadata = await sharp(imageBuffer).metadata();
+  const jpegBuffer = await sharp(imageBuffer).jpeg({ quality: 90 }).toBuffer();
+  const jpegMeta = await sharp(jpegBuffer).metadata();
+  const width = jpegMeta.width ?? metadata.width ?? 0;
+  const height = jpegMeta.height ?? metadata.height ?? 0;
+
+  const imageSha256 = sha256(jpegBuffer);
+  const uploadId = crypto.randomUUID();
+  const storedKey = `avatars-generated/${uploadId}.jpg`;
+
+  await putObject(storedKey, jpegBuffer, 'image/jpeg');
+
+  await db.insert(upload).values({
+    id: uploadId,
+    originalSha256: imageSha256,
+    originalMime: generated.mimeType,
+    originalSizeBytes: imageBuffer.length,
+    storedKey,
+    storedMime: 'image/jpeg',
+    storedSizeBytes: jpegBuffer.length,
+    width,
+    height,
+  });
+
+  log.info({ uploadId, width, height }, 'avatar image saved');
+
+  // Temporary debug: include processed images in response for UI
+  const result: GenerateAvatarImageResult = {
+    uploadId,
+    debug: {
+      processedBodyBase64: processedBody.buffer.toString('base64'),
+      processedBodyMime: processedBody.mimeType,
+      processedFaceBase64: processedFace.buffer.toString('base64'),
+      processedFaceMime: processedFace.mimeType,
+    },
+  };
+  return result;
+}
