@@ -2,10 +2,10 @@
 
 @layer base {
   :root {
-    @apply font-sans;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 
   body {
-    @apply min-w-[320px] min-h-screen m-0 bg-background text-foreground;
+    @apply min-w-[320px] min-h-screen m-0 bg-background text-foreground antialiased;
   }
 }
