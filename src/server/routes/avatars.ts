@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, count } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import { z } from 'zod';
 import { router } from './router';
@@ -222,9 +222,15 @@ export const avatarsRoutes = router({
         return apiErr({ message: 'Avatar not found' }, 404);
       }
 
+      const [outfitCountRow] = await db
+        .select({ count: count() })
+        .from(outfit)
+        .where(eq(outfit.avatarId, id));
+      const outfitsCount = Number(outfitCountRow?.count ?? 0);
+
       const dtoResult = parseResponseDto(GetAvatarResponseDtoSchema, {
         success: true as const,
-        data: { avatar: row },
+        data: { avatar: row, outfitsCount },
       });
       if (!dtoResult.ok) return dtoResult.response;
       return Response.json(dtoResult.data);

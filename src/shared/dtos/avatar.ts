@@ -45,7 +45,9 @@ export const ListAvatarsResponseDtoSchema = apiSuccessSchema(
 );
 export type ListAvatarsResponseDto = z.output<typeof ListAvatarsResponseDtoSchema>;
 
-export const GetAvatarResponseDtoSchema = apiSuccessSchema(z.object({ avatar: AvatarDtoSchema }));
+export const GetAvatarResponseDtoSchema = apiSuccessSchema(
+  z.object({ avatar: AvatarDtoSchema, outfitsCount: z.number() })
+);
 export type GetAvatarResponseDto = z.output<typeof GetAvatarResponseDtoSchema>;
 
 export const CreateAvatarResponseDtoSchema = apiSuccessSchema(z.object({ id: z.string() }));

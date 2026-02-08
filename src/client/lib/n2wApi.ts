@@ -72,7 +72,7 @@ export async function uploadFile(file: File): Promise<UploadResult> {
 
 // --- Avatars ---
 
-export type Avatar = AvatarDto;
+export type Avatar = AvatarDto & { outfitsCount?: number };
 export type { CreateAvatarParams };
 export type CreateAvatarResponse = CreateAvatarResponseDto;
 export type UpdateAvatarParams = {
@@ -161,7 +161,8 @@ export async function getAvatar(avatarId: string): Promise<Avatar> {
   if (!parsed.success) {
     throw new Error('Invalid get avatar response');
   }
-  return parsed.data.data.avatar;
+  const { avatar: a, outfitsCount } = parsed.data.data;
+  return { ...a, outfitsCount };
 }
 
 export async function deleteAvatar(avatarId: string): Promise<{ deletedOutfitsCount: number }> {
