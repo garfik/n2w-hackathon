@@ -12,8 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@components/ui/select';
-import { ImageUploadCard, type UploadResult } from '@client/components/ImageUploadCard';
-import { useDetectGarments, useCreateGarmentsFromDetections } from '@client/lib/apiHooks';
+import { MultiImageUploadCard, type UploadResult } from '@client/components/MultiImageUploadCard';
+import { useCreateGarmentsFromDetections } from '@client/lib/apiHooks';
+import { detectGarments } from '@client/lib/n2wApi';
 import type { DetectionItem } from '@shared/dtos/garment';
 import { DETECT_CATEGORIES } from '@shared/ai-schemas/garment';
 import { ArrowLeft, Loader2, CheckSquare, Square } from 'lucide-react';
@@ -23,24 +24,57 @@ const CATEGORY_OPTIONS = [...DETECT_CATEGORIES];
 
 type OverridesState = Record<string, { name?: string; category?: string }>;
 
+type DetectResultItem = {
+  uploadId: string;
+  imageUrl: string;
+  uploadWidth: number;
+  uploadHeight: number;
+  detections: DetectionItem[];
+};
+
 export function GarmentAddPage() {
   const navigate = useNavigate();
-  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
-  const [detectResult, setDetectResult] = useState<{
-    uploadId: string;
-    imageUrl: string;
-    detections: DetectionItem[];
-  } | null>(null);
+  const [uploadResults, setUploadResults] = useState<UploadResult[]>([]);
+  const [detectResults, setDetectResults] = useState<DetectResultItem[]>([]);
+  const [isDetecting, setIsDetecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [overrides, setOverrides] = useState<OverridesState>({});
 
-  const detectMutation = useDetectGarments({
-    onSuccess: (data) => {
-      setDetectResult(data);
-      setSelectedIds(new Set(data.detections.map((d) => d.id)));
+  const createMutation = useCreateGarmentsFromDetections({
+    onSuccess: () => {
+      navigate('/app/garments');
+    },
+  });
+
+  const handleUploadedAll = (results: UploadResult[]) => setUploadResults(results);
+  const handleClearUpload = () => {
+    setUploadResults([]);
+    setDetectResults([]);
+    setSelectedIds(new Set());
+    setOverrides({});
+  };
+
+  const handleDetect = async () => {
+    if (uploadResults.length === 0) return;
+    setIsDetecting(true);
+    try {
+      const results: DetectResultItem[] = [];
+      for (const u of uploadResults) {
+        const data = await detectGarments(u.id);
+        results.push({
+          uploadId: data.uploadId,
+          imageUrl: data.imageUrl,
+          uploadWidth: u.width,
+          uploadHeight: u.height,
+          detections: data.detections,
+        });
+      }
+      setDetectResults(results);
+      const allDetections = results.flatMap((r) => r.detections);
+      setSelectedIds(new Set(allDetections.map((d) => d.id)));
       setOverrides(
         Object.fromEntries(
-          data.detections.map((d) => [
+          allDetections.map((d) => [
             d.id,
             {
               name: d.labelGuess ?? undefined,
@@ -49,26 +83,9 @@ export function GarmentAddPage() {
           ])
         )
       );
-    },
-  });
-
-  const createMutation = useCreateGarmentsFromDetections({
-    onSuccess: () => {
-      navigate('/app/garments');
-    },
-  });
-
-  const handleUploaded = (result: UploadResult) => setUploadResult(result);
-  const handleClearUpload = () => {
-    setUploadResult(null);
-    setDetectResult(null);
-    setSelectedIds(new Set());
-    setOverrides({});
-  };
-
-  const handleDetect = () => {
-    if (!uploadResult) return;
-    detectMutation.mutate(uploadResult.id);
+    } finally {
+      setIsDetecting(false);
+    }
   };
 
   const toggleSelection = (id: string) => {
@@ -113,19 +130,19 @@ export function GarmentAddPage() {
         <div>
           <h1 className="text-2xl font-bold">Add garments from photo</h1>
           <p className="text-muted-foreground">
-            Upload a photo with one or more garments. We&apos;ll detect them and you can save the
-            ones you want.
+            Upload one or more photos. We&apos;ll detect
+            garments in each and you can save the ones you want.
           </p>
         </div>
       </div>
 
-      {/* Step A: Upload */}
+      {/* Step A: Upload (multiple photos; resized on client before upload) */}
       <div>
-        <Label className="text-sm font-medium">1. Upload photo</Label>
-        <ImageUploadCard
-          onUploaded={handleUploaded}
+        <Label className="text-sm font-medium">1. Upload photos</Label>
+        <MultiImageUploadCard
+          onUploadedAll={handleUploadedAll}
           onClear={handleClearUpload}
-          existingUpload={uploadResult ?? undefined}
+          existingUploads={uploadResults.length > 0 ? uploadResults : undefined}
           className="mt-2"
         />
       </div>
@@ -134,8 +151,11 @@ export function GarmentAddPage() {
       <div>
         <Label className="text-sm font-medium">2. Detect garments</Label>
         <div className="mt-2">
-          <Button onClick={handleDetect} disabled={!uploadResult || detectMutation.isPending}>
-            {detectMutation.isPending ? (
+          <Button
+            onClick={handleDetect}
+            disabled={uploadResults.length === 0 || isDetecting}
+          >
+            {isDetecting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 Detecting...
@@ -148,47 +168,55 @@ export function GarmentAddPage() {
       </div>
 
       {/* Step C & D: Results + Save */}
-      {detectResult && uploadResult && (
+      {detectResults.length > 0 && uploadResults.length > 0 && (
         <div className="space-y-4">
           <Label className="text-sm font-medium">3. Select and edit, then save</Label>
 
-          {/* Image with bbox overlay */}
-          <div
-            className="relative max-h-80 bg-muted rounded-md overflow-hidden"
-            style={{
-              aspectRatio: `${uploadResult.width} / ${uploadResult.height}`,
-            }}
-          >
-            <img
-              src={detectResult.imageUrl}
-              alt="Upload"
-              className="w-full h-full object-contain"
-            />
-            {detectResult.detections.map((d) => (
+          {/* Images with bbox overlays */}
+          <div className="space-y-4">
+            {detectResults.map((dr, idx) => (
               <div
-                key={d.id}
-                className={cn(
-                  'absolute border-2 rounded pointer-events-none',
-                  selectedIds.has(d.id)
-                    ? 'border-primary bg-primary/20'
-                    : 'border-muted-foreground/50 bg-muted-foreground/10'
-                )}
+                key={dr.uploadId}
+                className="relative max-h-80 bg-muted rounded-md overflow-hidden"
                 style={{
-                  left: `${(d.bbox.x ?? 0) * 100}%`,
-                  top: `${(d.bbox.y ?? 0) * 100}%`,
-                  width: `${(d.bbox.w ?? 0.1) * 100}%`,
-                  height: `${(d.bbox.h ?? 0.1) * 100}%`,
+                  aspectRatio: `${dr.uploadWidth} / ${dr.uploadHeight}`,
                 }}
-              />
+              >
+                <img
+                  src={dr.imageUrl}
+                  alt={`Upload ${idx + 1}`}
+                  className="w-full h-full object-contain"
+                />
+                {dr.detections.map((d) => (
+                  <div
+                    key={d.id}
+                    className={cn(
+                      'absolute border-2 rounded pointer-events-none',
+                      selectedIds.has(d.id)
+                        ? 'border-primary bg-primary/20'
+                        : 'border-muted-foreground/50 bg-muted-foreground/10'
+                    )}
+                    style={{
+                      left: `${(d.bbox.x ?? 0) * 100}%`,
+                      top: `${(d.bbox.y ?? 0) * 100}%`,
+                      width: `${(d.bbox.w ?? 0.1) * 100}%`,
+                      height: `${(d.bbox.h ?? 0.1) * 100}%`,
+                    }}
+                  />
+                ))}
+              </div>
             ))}
           </div>
 
-          {/* List of detections */}
+          {/* List of all detections (flattened) */}
+          {(() => {
+            const allDetections = detectResults.flatMap((r) => r.detections);
+            return (
           <div className="space-y-2">
-            {detectResult.detections.length === 0 ? (
+            {allDetections.length === 0 ? (
               <p className="text-sm text-muted-foreground">No garments detected.</p>
             ) : (
-              detectResult.detections.map((d) => (
+              allDetections.map((d) => (
                 <Card
                   key={d.id}
                   className={cn(
@@ -240,6 +268,8 @@ export function GarmentAddPage() {
               ))
             )}
           </div>
+            );
+          })()}
 
           <Button
             onClick={handleSave}
