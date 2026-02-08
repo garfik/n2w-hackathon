@@ -55,7 +55,7 @@ function OutfitCard({ o, avatarId }: { o: OutfitListItem; avatarId: string }) {
             <img
               src={o.tryonImageUrl}
               alt="Try-on preview"
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain"
             />
           ) : (
             <ImageIcon className="h-8 w-8 text-muted-foreground/30" />

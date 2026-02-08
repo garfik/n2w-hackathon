@@ -46,6 +46,9 @@ function AvatarCard({ avatar }: { avatar: Avatar }) {
           <CardTitle className="text-lg">{avatar.name}</CardTitle>
           <CardDescription>
             Created {new Date(avatar.createdAt).toLocaleDateString()}
+            {avatar.outfitsCount != null && (
+              <> · {avatar.outfitsCount} generated outfit{avatar.outfitsCount !== 1 ? 's' : ''}</>
+            )}
           </CardDescription>
         </CardContent>
       </Link>
