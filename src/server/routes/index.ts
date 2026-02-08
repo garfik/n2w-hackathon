@@ -1,8 +1,5 @@
 import path from 'path';
 import index from '../../client/index.html';
-import { authRoutes } from './auth';
-import { meRoutes } from './me';
-import { appRoutes } from './app';
 import { avatarsRoutes } from './avatars';
 import { garmentsRoutes } from './garments';
 import { outfitsRoutes } from './outfits';
@@ -33,9 +30,6 @@ async function serveProductionStatic(req: Request): Promise<Response> {
 
 export function getRoutes() {
   return {
-    ...authRoutes,
-    ...meRoutes,
-    ...appRoutes,
     ...avatarsRoutes,
     ...garmentsRoutes,
     ...outfitsRoutes,

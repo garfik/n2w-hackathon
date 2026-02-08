@@ -64,6 +64,13 @@
       "when": 1770468434024,
       "tag": "0008_minor_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1770558189610,
+      "tag": "0009_third_orphan",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,5 @@
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { router } from './router';
-import { requireUser } from '../lib/requireUser';
 import { db } from '../../db/client';
 import { garment, garmentDetection, upload } from '../../db/domain.schema';
 import { getObjectBuffer } from '../lib/storage';
@@ -15,14 +14,11 @@ import {
 export const garmentsRoutes = router({
   '/api/garments': {
     async GET(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
       const url = new URL(req.url);
       const category = url.searchParams.get('category')?.trim() || undefined;
       const search = url.searchParams.get('search')?.trim() || undefined;
 
-      const conditions = [eq(garment.userId, result.userId)];
+      const conditions = [];
       if (category) conditions.push(eq(garment.category, category));
 
       const rows = await db
@@ -36,7 +32,7 @@ export const garmentsRoutes = router({
           updatedAt: garment.updatedAt,
         })
         .from(garment)
-        .where(and(...conditions))
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(desc(garment.createdAt));
 
       let list = rows.map((r) => ({
@@ -59,9 +55,6 @@ export const garmentsRoutes = router({
     },
 
     async POST(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
       let body: unknown;
       try {
         body = await req.json();
@@ -88,20 +81,15 @@ export const garmentsRoutes = router({
       const detections = await db
         .select()
         .from(garmentDetection)
-        .where(
-          and(
-            eq(garmentDetection.userId, result.userId),
-            inArray(garmentDetection.id, detectionIds)
-          )
-        );
+        .where(inArray(garmentDetection.id, detectionIds));
 
       if (detections.length !== detectionIds.length) {
         return apiErr(
           {
-            code: 'DETECTION_OWNERSHIP',
-            message: 'Some detections not found or do not belong to you',
+            code: 'DETECTION_NOT_FOUND',
+            message: 'Some detections not found',
           },
-          403
+          404
         );
       }
 
@@ -111,7 +99,6 @@ export const garmentsRoutes = router({
         const id = crypto.randomUUID();
         await db.insert(garment).values({
           id,
-          userId: result.userId,
           uploadId: d.uploadId,
           bboxNorm: d.bboxNorm,
           name: override?.name ?? d.labelGuess ?? 'Unnamed',
@@ -127,9 +114,6 @@ export const garmentsRoutes = router({
 
   '/api/garments/detect': {
     async POST(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
       let body: unknown;
       try {
         body = await req.json();
@@ -147,16 +131,10 @@ export const garmentsRoutes = router({
 
       const { uploadId } = parsed.data;
 
-      const [uploadRow] = await db
-        .select()
-        .from(upload)
-        .where(and(eq(upload.id, uploadId), eq(upload.userId, result.userId)));
+      const [uploadRow] = await db.select().from(upload).where(eq(upload.id, uploadId));
 
       if (!uploadRow) {
-        return apiErr(
-          { code: 'UPLOAD_NOT_FOUND', message: 'Upload not found or does not belong to you' },
-          404
-        );
+        return apiErr({ code: 'UPLOAD_NOT_FOUND', message: 'Upload not found' }, 404);
       }
 
       let buffer: Buffer;
@@ -186,7 +164,6 @@ export const garmentsRoutes = router({
         const confidence = d.confidence;
         await db.insert(garmentDetection).values({
           id,
-          userId: result.userId,
           uploadId,
           bboxNorm: d.bbox,
           categoryGuess: d.category ?? null,
@@ -221,16 +198,10 @@ export const garmentsRoutes = router({
 
   '/api/garments/:id': {
     async GET(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
       const id = req.params.id;
       if (!id) return apiErr({ code: 'MISSING_ID', message: 'Missing garment id' }, 400);
 
-      const [row] = await db
-        .select()
-        .from(garment)
-        .where(and(eq(garment.id, id), eq(garment.userId, result.userId)));
+      const [row] = await db.select().from(garment).where(eq(garment.id, id));
 
       if (!row) {
         return apiErr({ code: 'NOT_FOUND', message: 'Garment not found' }, 404);
@@ -252,9 +223,6 @@ export const garmentsRoutes = router({
     },
 
     async PATCH(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
       const id = req.params.id;
       if (!id) return apiErr({ code: 'MISSING_ID', message: 'Missing garment id' }, 400);
 
@@ -273,10 +241,7 @@ export const garmentsRoutes = router({
         );
       }
 
-      const [existing] = await db
-        .select()
-        .from(garment)
-        .where(and(eq(garment.id, id), eq(garment.userId, result.userId)));
+      const [existing] = await db.select().from(garment).where(eq(garment.id, id));
 
       if (!existing) {
         return apiErr({ code: 'NOT_FOUND', message: 'Garment not found' }, 404);
@@ -328,16 +293,13 @@ export const garmentsRoutes = router({
     },
 
     async DELETE(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
       const id = req.params.id;
       if (!id) return apiErr({ code: 'MISSING_ID', message: 'Missing garment id' }, 400);
 
       const [existing] = await db
         .select({ id: garment.id })
         .from(garment)
-        .where(and(eq(garment.id, id), eq(garment.userId, result.userId)));
+        .where(eq(garment.id, id));
 
       if (!existing) {
         return apiErr({ code: 'NOT_FOUND', message: 'Garment not found' }, 404);

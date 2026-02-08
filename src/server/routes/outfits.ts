@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { router } from './router';
-import { requireUser } from '../lib/requireUser';
 import { db } from '../../db/client';
 import { outfit, outfitItem, tryon, avatar, garment, avatarAnalysis } from '../../db/domain.schema';
 import { eq, and, or, lt, desc, sql, inArray } from 'drizzle-orm';
@@ -36,9 +35,6 @@ function dtoResponse<T>(schema: z.ZodType<T>, raw: unknown, status = 200): Respo
 export const outfitsRoutes = router({
   '/api/avatars/:id/outfits': {
     async POST(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
       const avatarId = req.params.id;
       if (!avatarId) return apiErr({ message: 'Missing avatar id' }, 400);
 
@@ -58,7 +54,7 @@ export const outfitsRoutes = router({
       const [avatarRow] = await db
         .select({ id: avatar.id })
         .from(avatar)
-        .where(and(eq(avatar.id, avatarId), eq(avatar.userId, result.userId)));
+        .where(eq(avatar.id, avatarId));
       if (!avatarRow) {
         return apiErr({ message: 'Avatar not found' }, 404);
       }
@@ -67,11 +63,11 @@ export const outfitsRoutes = router({
       const userGarments = await db
         .select({ id: garment.id })
         .from(garment)
-        .where(and(eq(garment.userId, result.userId), inArray(garment.id, garmentIdsSortedUnique)));
+        .where(inArray(garment.id, garmentIdsSortedUnique));
       const foundIds = new Set(userGarments.map((g) => g.id));
       const missing = garmentIdsSortedUnique.filter((id) => !foundIds.has(id));
       if (missing.length > 0) {
-        return apiErr({ message: `Garments not found or not yours: ${missing.join(', ')}` }, 400);
+        return apiErr({ message: `Garments not found: ${missing.join(', ')}` }, 400);
       }
 
       const occasionCanon = rawOccasion.trim().toLowerCase();
@@ -83,14 +79,13 @@ export const outfitsRoutes = router({
         .insert(outfit)
         .values({
           id: newId,
-          userId: result.userId,
           avatarId,
           occasion: occasionCanon,
           outfitKey,
           tryonKey,
           status: 'pending',
         })
-        .onConflictDoNothing({ target: [outfit.userId, outfit.outfitKey] })
+        .onConflictDoNothing({ target: [outfit.avatarId, outfit.outfitKey] })
         .returning({ id: outfit.id });
 
       let outfitId: string;
@@ -102,7 +97,7 @@ export const outfitsRoutes = router({
         const [existing] = await db
           .select({ id: outfit.id })
           .from(outfit)
-          .where(and(eq(outfit.userId, result.userId), eq(outfit.outfitKey, outfitKey)));
+          .where(eq(outfit.outfitKey, outfitKey));
         if (!existing) {
           return apiErr({ message: 'Race condition: outfit disappeared' }, 500);
         }
@@ -121,12 +116,11 @@ export const outfitsRoutes = router({
         .insert(tryon)
         .values({
           id: crypto.randomUUID(),
-          userId: result.userId,
           avatarId,
           tryonKey,
           status: 'pending',
         })
-        .onConflictDoNothing({ target: [tryon.userId, tryon.tryonKey] });
+        .onConflictDoNothing({ target: [tryon.avatarId, tryon.tryonKey] });
 
       return dtoResponse(CreateOutfitResponseDtoSchema, {
         success: true as const,
@@ -135,9 +129,6 @@ export const outfitsRoutes = router({
     },
 
     async GET(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
       const avatarId = req.params.id;
       if (!avatarId) return apiErr({ message: 'Missing avatar id' }, 400);
 
@@ -151,7 +142,7 @@ export const outfitsRoutes = router({
           createdAt: outfit.createdAt,
         })
         .from(outfit)
-        .where(and(eq(outfit.userId, result.userId), eq(outfit.avatarId, avatarId)))
+        .where(eq(outfit.avatarId, avatarId))
         .orderBy(desc(outfit.createdAt));
 
       // Batch-fetch tryon statuses
@@ -169,7 +160,7 @@ export const outfitsRoutes = router({
             imageUploadId: tryon.imageUploadId,
           })
           .from(tryon)
-          .where(and(eq(tryon.userId, result.userId), inArray(tryon.tryonKey, tryonKeys)));
+          .where(inArray(tryon.tryonKey, tryonKeys));
         tryonMap = new Map(tryonRows.map((t) => [t.tryonKey, t]));
       }
 
@@ -197,15 +188,10 @@ export const outfitsRoutes = router({
   },
 
   '/api/outfits/:id': async (req) => {
-    const result = await requireUser(req);
-    if (result instanceof Response) return result;
     const id = req.params.id;
     if (!id) return apiErr({ message: 'Missing id' }, 400);
 
-    const [outfitRow] = await db
-      .select()
-      .from(outfit)
-      .where(and(eq(outfit.id, id), eq(outfit.userId, result.userId)));
+    const [outfitRow] = await db.select().from(outfit).where(eq(outfit.id, id));
     if (!outfitRow) return apiErr({ message: 'Not found' }, 404);
 
     const garmentRows = await db
@@ -235,7 +221,7 @@ export const outfitsRoutes = router({
         errorMessage: tryon.errorMessage,
       })
       .from(tryon)
-      .where(and(eq(tryon.userId, result.userId), eq(tryon.tryonKey, outfitRow.tryonKey)));
+      .where(eq(tryon.tryonKey, outfitRow.tryonKey));
 
     return dtoResponse(GetOutfitResponseDtoSchema, {
       success: true as const,
@@ -266,15 +252,10 @@ export const outfitsRoutes = router({
 
   '/api/outfits/:id/score': {
     async POST(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
       const id = req.params.id;
       if (!id) return apiErr({ message: 'Missing id' }, 400);
 
-      const [outfitRow] = await db
-        .select()
-        .from(outfit)
-        .where(and(eq(outfit.id, id), eq(outfit.userId, result.userId)));
+      const [outfitRow] = await db.select().from(outfit).where(eq(outfit.id, id));
       if (!outfitRow) return apiErr({ message: 'Not found' }, 404);
 
       // Lock: claim this outfit for scoring if eligible
@@ -290,7 +271,6 @@ export const outfitsRoutes = router({
         .where(
           and(
             eq(outfit.id, id),
-            eq(outfit.userId, result.userId),
             or(
               inArray(outfit.status, ['pending', 'failed']),
               and(eq(outfit.status, 'running'), lt(outfit.generationStartedAt, staleThreshold))
@@ -329,7 +309,7 @@ export const outfitsRoutes = router({
             photoUploadId: avatar.photoUploadId,
           })
           .from(avatar)
-          .where(and(eq(avatar.id, outfitRow.avatarId), eq(avatar.userId, result.userId)));
+          .where(eq(avatar.id, outfitRow.avatarId));
 
         if (!avatarRow) {
           await setOutfitFailed(id, 'AVATAR_NOT_FOUND', 'Avatar not found');
@@ -411,43 +391,33 @@ export const outfitsRoutes = router({
 
   '/api/outfits/:id/tryon': {
     async POST(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
       const id = req.params.id;
       if (!id) return apiErr({ message: 'Missing id' }, 400);
 
       const [outfitRow] = await db
         .select({
           id: outfit.id,
-          userId: outfit.userId,
           tryonKey: outfit.tryonKey,
           avatarId: outfit.avatarId,
         })
         .from(outfit)
-        .where(and(eq(outfit.id, id), eq(outfit.userId, result.userId)));
+        .where(eq(outfit.id, id));
       if (!outfitRow) return apiErr({ message: 'Not found' }, 404);
 
-      let [tryonRow] = await db
-        .select()
-        .from(tryon)
-        .where(and(eq(tryon.userId, result.userId), eq(tryon.tryonKey, outfitRow.tryonKey)));
+      let [tryonRow] = await db.select().from(tryon).where(eq(tryon.tryonKey, outfitRow.tryonKey));
 
       if (!tryonRow) {
         await db
           .insert(tryon)
           .values({
             id: crypto.randomUUID(),
-            userId: result.userId,
             avatarId: outfitRow.avatarId,
             tryonKey: outfitRow.tryonKey,
             status: 'pending',
           })
-          .onConflictDoNothing({ target: [tryon.userId, tryon.tryonKey] });
+          .onConflictDoNothing({ target: [tryon.avatarId, tryon.tryonKey] });
 
-        [tryonRow] = await db
-          .select()
-          .from(tryon)
-          .where(and(eq(tryon.userId, result.userId), eq(tryon.tryonKey, outfitRow.tryonKey)));
+        [tryonRow] = await db.select().from(tryon).where(eq(tryon.tryonKey, outfitRow.tryonKey));
 
         if (!tryonRow) {
           return apiErr({ message: 'Failed to create tryon record' }, 500);
@@ -466,7 +436,6 @@ export const outfitsRoutes = router({
         .where(
           and(
             eq(tryon.id, tryonRow.id),
-            eq(tryon.userId, result.userId),
             or(
               inArray(tryon.status, ['pending', 'failed']),
               and(eq(tryon.status, 'running'), lt(tryon.generationStartedAt, staleThreshold))
@@ -518,7 +487,6 @@ export const outfitsRoutes = router({
             name: g.name,
             category: g.category,
           })),
-          userId: result.userId,
         });
 
         await db

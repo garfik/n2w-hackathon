@@ -15,12 +15,8 @@ import {
   SelectValue,
 } from '@components/ui/select';
 import { Progress } from '@components/ui/progress';
-import {
-  createAvatar,
-  analyzeAvatar,
-  updateAvatar,
-  type AnalyzeErrorResponse,
-} from '@client/lib/n2wApi';
+import { analyzeAvatar, type AnalyzeErrorResponse } from '@client/lib/n2wApi';
+import { useCreateAvatar, useUpdateAvatar } from '@client/lib/useAvatars';
 import type { AvatarBodyProfile, AvatarBodyProfileClean } from '@shared/dtos/avatar';
 import { ImageUploadCard, type UploadResult } from '@client/components/ImageUploadCard';
 
@@ -110,6 +106,8 @@ function confidencePercent(c: number): number {
 
 export function AvatarNewPage() {
   const navigate = useNavigate();
+  const createMutation = useCreateAvatar();
+  const updateMutation = useUpdateAvatar();
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [avatarName, setAvatarName] = useState('');
   const [avatarId, setAvatarId] = useState<string | null>(null);
@@ -130,11 +128,11 @@ export function AvatarNewPage() {
     setCreateError(null);
     setCreateLoading(true);
     try {
-      const res = await createAvatar({
+      const newId = await createMutation.mutateAsync({
         uploadId: uploadResult.id,
         name: avatarName.trim() || 'Avatar',
       });
-      setAvatarId(res.data.id);
+      setAvatarId(newId);
       setAnalysisStatus('loading');
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Create failed');
@@ -178,7 +176,7 @@ export function AvatarNewPage() {
         typeof heightCm === 'number' && Number.isFinite(heightCm) ? heightCm : undefined;
       if (formProfile) {
         // Strip confidence and issues before saving - only store clean data
-        await updateAvatar({
+        await updateMutation.mutateAsync({
           avatarId,
           bodyProfileJson: toCleanProfile(formProfile),
           heightCm: height,

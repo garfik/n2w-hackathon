@@ -3,7 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@comp
 import { Button } from '@components/ui/button';
 import { Badge } from '@components/ui/badge';
 import { Skeleton } from '@components/ui/skeleton';
-import { useAvatar, useOutfitsList } from '@client/lib/apiHooks';
+import { useAvatar } from '@client/lib/useAvatars';
+import { useOutfitsList } from '@client/lib/apiHooks';
 import { Plus, Star, ImageIcon } from 'lucide-react';
 import type { OutfitListItem } from '@client/lib/n2wApi';
 

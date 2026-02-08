@@ -28,7 +28,6 @@ export type AvatarBodyProfileClean = z.output<typeof AvatarBodyProfileCleanSchem
 
 export const AvatarDtoSchema = z.object({
   id: z.string(),
-  userId: z.string(),
   name: z.string(),
   photoUploadId: z.string().nullable(),
   bodyProfileJson: z.unknown().nullable(),

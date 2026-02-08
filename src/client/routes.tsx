@@ -1,10 +1,6 @@
-import { createBrowserRouter, Navigate, redirect, type LoaderFunctionArgs } from 'react-router-dom';
-import { getAppBootstrap, getMe } from './lib/n2wApi';
-import { AppLayout } from './pages/AppLayout';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { LandingPage } from './pages/LandingPage';
-import { LoginPage } from './pages/LoginPage';
-import { RegisterPage } from './pages/RegisterPage';
-import { AppDashboard } from './pages/AppDashboard';
+import { AppLayout } from './pages/AppLayout';
 import { AvatarNewPage } from './pages/AvatarNewPage';
 import { AvatarsListPage } from './pages/AvatarsListPage';
 import { AvatarEditPage } from './pages/AvatarEditPage';
@@ -15,46 +11,17 @@ import { GarmentsListPage } from './pages/GarmentsListPage';
 import { GarmentDetailPage } from './pages/GarmentDetailPage';
 import { GarmentAddPage } from './pages/GarmentAddPage';
 
-async function appBootstrapLoader({ request }: LoaderFunctionArgs) {
-  const result = await getAppBootstrap();
-  if ('status' in result) return redirect('/login');
-  const pathname = new URL(request.url).pathname;
-  const allowedWithoutAvatar = ['/app/avatars/new', '/app/garments'];
-  if (!result.avatarExists && !allowedWithoutAvatar.some((p) => pathname.startsWith(p))) {
-    return redirect('/app/avatars/new');
-  }
-  return { avatarExists: result.avatarExists };
-}
-
-async function landingLoader() {
-  try {
-    await getMe();
-    return { loggedIn: true };
-  } catch {
-    return { loggedIn: false };
-  }
-}
-
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <LandingPage />,
-    loader: landingLoader,
-  },
-  {
-    path: '/login',
-    element: <LoginPage />,
-  },
-  {
-    path: '/register',
-    element: <RegisterPage />,
+    element: <AppLayout />,
+    children: [{ index: true, element: <LandingPage /> }],
   },
   {
     path: '/app',
     element: <AppLayout />,
-    loader: appBootstrapLoader,
     children: [
-      { index: true, element: <AppDashboard /> },
+      { index: true, element: <Navigate to="/" replace /> },
       { path: 'avatars', element: <AvatarsListPage /> },
       { path: 'avatars/new', element: <AvatarNewPage /> },
       { path: 'avatars/:avatarId/edit', element: <AvatarEditPage /> },

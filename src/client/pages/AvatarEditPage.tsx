@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@components/ui/select';
-import { useAvatar, useUpdateAvatar } from '@client/lib/apiHooks';
+import { useAvatar, useUpdateAvatar } from '@client/lib/useAvatars';
 import type { AvatarBodyProfile, AvatarBodyProfileClean } from '@shared/dtos/avatar';
 
 /** Strip AI metadata (confidence, issues) from body profile before saving */

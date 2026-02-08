@@ -1,8 +1,7 @@
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import { z } from 'zod';
 import { router } from './router';
-import { requireUser } from '../lib/requireUser';
 import { db } from '../../db/client';
 import { avatar, avatarAnalysis, outfit, upload } from '../../db/domain.schema';
 import { getObjectBuffer } from '../lib/storage';
@@ -11,7 +10,6 @@ import { analyzeAvatar as analyzeAvatarLib, AVATAR_ANALYSIS_MODEL } from '../pro
 import { AvatarAnalysisResultSchema } from '@shared/ai-schemas/avatar';
 import { apiErr } from './response';
 import {
-  ListAvatarsResponseDtoSchema,
   GetAvatarResponseDtoSchema,
   CreateAvatarResponseDtoSchema,
   UpdateAvatarResponseDtoSchema,
@@ -37,28 +35,7 @@ function parseResponseDto<T>(
 
 export const avatarsRoutes = router({
   '/api/avatars': {
-    async GET(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
-      const rows = await db
-        .select()
-        .from(avatar)
-        .where(eq(avatar.userId, result.userId))
-        .orderBy(desc(avatar.createdAt));
-
-      const dtoResult = parseResponseDto(ListAvatarsResponseDtoSchema, {
-        success: true as const,
-        data: { avatars: rows },
-      });
-      if (!dtoResult.ok) return dtoResult.response;
-      return Response.json(dtoResult.data);
-    },
-
     async POST(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
       const contentType = req.headers.get('content-type') ?? '';
       if (!contentType.includes('application/json')) {
         return apiErr(
@@ -84,10 +61,7 @@ export const avatarsRoutes = router({
 
       let photoUploadId: string | null = null;
       if (uploadId) {
-        const [uploadRow] = await db
-          .select()
-          .from(upload)
-          .where(and(eq(upload.id, uploadId), eq(upload.userId, result.userId)));
+        const [uploadRow] = await db.select().from(upload).where(eq(upload.id, uploadId));
         if (!uploadRow) {
           return apiErr({ message: 'Upload not found' }, 404);
         }
@@ -97,7 +71,6 @@ export const avatarsRoutes = router({
       const id = crypto.randomUUID();
       await db.insert(avatar).values({
         id,
-        userId: result.userId,
         name: name.trim(),
         photoUploadId,
         heightCm: heightCm ?? null,
@@ -114,18 +87,12 @@ export const avatarsRoutes = router({
 
   '/api/avatars/:id/analyze': {
     async POST(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
       const id = req.params.id;
       if (!id) {
         return apiErr({ message: 'Missing avatar id' }, 400);
       }
 
-      const [row] = await db
-        .select()
-        .from(avatar)
-        .where(and(eq(avatar.id, id), eq(avatar.userId, result.userId)));
+      const [row] = await db.select().from(avatar).where(eq(avatar.id, id));
 
       if (!row) {
         return apiErr({ message: 'Avatar not found' }, 404);
@@ -135,10 +102,7 @@ export const avatarsRoutes = router({
         return apiErr({ message: 'Avatar has no photo' }, 400);
       }
 
-      const [uploadRow] = await db
-        .select()
-        .from(upload)
-        .where(and(eq(upload.id, row.photoUploadId), eq(upload.userId, result.userId)));
+      const [uploadRow] = await db.select().from(upload).where(eq(upload.id, row.photoUploadId));
       if (!uploadRow) {
         return apiErr({ message: 'Avatar photo upload not found' }, 400);
       }
@@ -199,7 +163,6 @@ export const avatarsRoutes = router({
         .insert(avatarAnalysis)
         .values({
           id: crypto.randomUUID(),
-          userId: result.userId,
           avatarId: id,
           photoHash,
           modelVersion: AVATAR_ANALYSIS_MODEL,
@@ -248,18 +211,12 @@ export const avatarsRoutes = router({
 
   '/api/avatars/:id': {
     async GET(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
       const id = req.params.id;
       if (!id) {
         return apiErr({ message: 'Missing avatar id' }, 400);
       }
 
-      const [row] = await db
-        .select()
-        .from(avatar)
-        .where(and(eq(avatar.id, id), eq(avatar.userId, result.userId)));
+      const [row] = await db.select().from(avatar).where(eq(avatar.id, id));
 
       if (!row) {
         return apiErr({ message: 'Avatar not found' }, 404);
@@ -274,9 +231,6 @@ export const avatarsRoutes = router({
     },
 
     async PATCH(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
       const id = req.params.id;
       if (!id) {
         return apiErr({ message: 'Missing avatar id' }, 400);
@@ -295,10 +249,7 @@ export const avatarsRoutes = router({
       }
       const body = bodyParse.data;
 
-      const [row] = await db
-        .select()
-        .from(avatar)
-        .where(and(eq(avatar.id, id), eq(avatar.userId, result.userId)));
+      const [row] = await db.select().from(avatar).where(eq(avatar.id, id));
 
       if (!row) {
         return apiErr({ message: 'Avatar not found' }, 404);
@@ -328,18 +279,12 @@ export const avatarsRoutes = router({
     },
 
     async DELETE(req) {
-      const result = await requireUser(req);
-      if (result instanceof Response) return result;
-
       const id = req.params.id;
       if (!id) {
         return apiErr({ message: 'Missing avatar id' }, 400);
       }
 
-      const [row] = await db
-        .select()
-        .from(avatar)
-        .where(and(eq(avatar.id, id), eq(avatar.userId, result.userId)));
+      const [row] = await db.select().from(avatar).where(eq(avatar.id, id));
 
       if (!row) {
         return apiErr({ message: 'Avatar not found' }, 404);

@@ -13,35 +13,83 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@components/ui/alert-dialog';
-import { useAvatars, useDeleteAvatar } from '@client/lib/apiHooks';
+import { useAvatars, useDeleteAvatar } from '@client/lib/useAvatars';
 import type { Avatar } from '@client/lib/n2wApi';
+import { Loader2 } from 'lucide-react';
 
 function getAvatarImageUrl(photoUploadId: string | null): string | null {
   if (!photoUploadId) return null;
   return `/api/uploads/${photoUploadId}/image`;
 }
 
-export function AvatarsListPage() {
-  const { data: avatars, error, isPending } = useAvatars();
+function AvatarCard({ avatar }: { avatar: Avatar }) {
+  const imageUrl = getAvatarImageUrl(avatar.photoUploadId);
   const deleteMutation = useDeleteAvatar();
 
-  const handleDelete = (avatarId: string) => {
-    deleteMutation.mutate(avatarId, {
-      onSuccess: () => {},
-    });
-  };
+  return (
+    <Card className="relative transition-all hover:shadow-md">
+      <Link to={`/app/avatars/${avatar.id}/outfits`}>
+        <CardHeader className="pb-2">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={avatar.name}
+              className="h-40 w-full object-contain rounded-md bg-muted/50"
+            />
+          ) : (
+            <div className="h-40 w-full rounded-md bg-muted/50 flex items-center justify-center">
+              <span className="text-muted-foreground">No image</span>
+            </div>
+          )}
+        </CardHeader>
+        <CardContent className="pb-2">
+          <CardTitle className="text-lg">{avatar.name}</CardTitle>
+          <CardDescription>
+            Created {new Date(avatar.createdAt).toLocaleDateString()}
+          </CardDescription>
+        </CardContent>
+      </Link>
+      <CardContent className="pt-0">
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" asChild>
+            <Link to={`/app/avatars/${avatar.id}/outfits`}>Outfits</Link>
+          </Button>
+          <Button size="sm" variant="outline" asChild>
+            <Link to={`/app/avatars/${avatar.id}/edit`}>Edit</Link>
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="destructive" disabled={deleteMutation.isPending}>
+                {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete avatar?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete &quot;{avatar.name}&quot; and all associated outfits.
+                  This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => deleteMutation.mutate(avatar.id)}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
-  if (error) {
-    return (
-      <div className="max-w-4xl mx-auto">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-destructive">{error.message}</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+export function AvatarsListPage() {
+  const { avatars, isEmpty, isPending } = useAvatars();
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -55,7 +103,7 @@ export function AvatarsListPage() {
         </Button>
       </div>
 
-      {isPending ? (
+      {isPending && isEmpty ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
             <Card key={i}>
@@ -69,7 +117,7 @@ export function AvatarsListPage() {
             </Card>
           ))}
         </div>
-      ) : !avatars?.length ? (
+      ) : isEmpty ? (
         <Card>
           <CardHeader>
             <CardTitle>No avatars yet</CardTitle>
@@ -85,71 +133,9 @@ export function AvatarsListPage() {
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {avatars.map((avatar: Avatar) => {
-            const imageUrl = getAvatarImageUrl(avatar.photoUploadId);
-            const isDeleting = deleteMutation.isPending && deleteMutation.variables === avatar.id;
-
-            return (
-              <Card key={avatar.id} className="relative transition-all hover:shadow-md">
-                <Link to={`/app/avatars/${avatar.id}/outfits`}>
-                  <CardHeader className="pb-2">
-                    {imageUrl ? (
-                      <img
-                        src={imageUrl}
-                        alt={avatar.name}
-                        className="h-40 w-full object-contain rounded-md bg-muted/50"
-                      />
-                    ) : (
-                      <div className="h-40 w-full rounded-md bg-muted/50 flex items-center justify-center">
-                        <span className="text-muted-foreground">No image</span>
-                      </div>
-                    )}
-                  </CardHeader>
-                  <CardContent className="pb-2">
-                    <CardTitle className="text-lg">{avatar.name}</CardTitle>
-                    <CardDescription>
-                      Created {new Date(avatar.createdAt).toLocaleDateString()}
-                    </CardDescription>
-                  </CardContent>
-                </Link>
-                <CardContent className="pt-0">
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" asChild>
-                      <Link to={`/app/avatars/${avatar.id}/outfits`}>Outfits</Link>
-                    </Button>
-                    <Button size="sm" variant="outline" asChild>
-                      <Link to={`/app/avatars/${avatar.id}/edit`}>Edit</Link>
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button size="sm" variant="destructive" disabled={isDeleting}>
-                          {isDeleting ? 'Deleting...' : 'Delete'}
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete avatar?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This will permanently delete &quot;{avatar.name}&quot; and all
-                            associated outfits. This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => handleDelete(avatar.id)}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          {avatars.map((avatar) => (
+            <AvatarCard key={avatar.id} avatar={avatar} />
+          ))}
         </div>
       )}
     </div>

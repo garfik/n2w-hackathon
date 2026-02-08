@@ -1,11 +1,5 @@
+import { UploadResponseDtoSchema, type UploadResult } from '@shared/dtos';
 import {
-  AppBootstrapResponseDtoSchema,
-  MeResponseDtoSchema,
-  UploadResponseDtoSchema,
-  type UploadResult,
-} from '@shared/dtos';
-import {
-  ListAvatarsResponseDtoSchema,
   GetAvatarResponseDtoSchema,
   CreateAvatarResponseDtoSchema,
   UpdateAvatarResponseDtoSchema,
@@ -58,30 +52,7 @@ function parseErrorResponse(raw: unknown, fallbackMessage: string): never {
   throw new Error(message || fallbackMessage);
 }
 
-// --- App bootstrap & auth (for loaders) ---
-
 export type { UploadResult };
-
-/** GET /api/app/bootstrap. Returns data or { status: 401 } for redirect. */
-export async function getAppBootstrap(): Promise<{ avatarExists: boolean } | { status: 401 }> {
-  const res = await fetch('/api/app/bootstrap', { credentials });
-  if (res.status === 401) return { status: 401 };
-  const raw = await res.json();
-  if (!res.ok) parseErrorResponse(raw, 'Bootstrap failed');
-  const parsed = AppBootstrapResponseDtoSchema.safeParse(raw);
-  if (!parsed.success) throw new Response('Invalid bootstrap response', { status: 502 });
-  return { avatarExists: parsed.data.data.avatarExists };
-}
-
-/** GET /api/me. Throws on non-2xx (e.g. 401). */
-export async function getMe(): Promise<{ userId: string; email: string }> {
-  const res = await fetch('/api/me', { credentials });
-  const raw = await res.json();
-  if (!res.ok) parseErrorResponse(raw, 'Unauthorized');
-  const parsed = MeResponseDtoSchema.safeParse(raw);
-  if (!parsed.success) throw new Error('Invalid me response');
-  return parsed.data.data;
-}
 
 /** POST /api/uploads with FormData (file). Returns upload result. */
 export async function uploadFile(file: File): Promise<UploadResult> {
@@ -99,7 +70,8 @@ export async function uploadFile(file: File): Promise<UploadResult> {
   return parsed.data.data;
 }
 
-// Re-export for consumers
+// --- Avatars ---
+
 export type Avatar = AvatarDto;
 export type { CreateAvatarParams };
 export type CreateAvatarResponse = CreateAvatarResponseDto;
@@ -179,17 +151,6 @@ export async function updateAvatar({
     throw new Error('Invalid update avatar response');
   }
   return parsed.data;
-}
-
-export async function listAvatars(): Promise<Avatar[]> {
-  const res = await fetch('/api/avatars', { credentials });
-  const raw = await res.json();
-  if (!res.ok) parseErrorResponse(raw, 'Failed to load avatars');
-  const parsed = ListAvatarsResponseDtoSchema.safeParse(raw);
-  if (!parsed.success) {
-    throw new Error('Invalid list avatars response');
-  }
-  return parsed.data.data.avatars;
 }
 
 export async function getAvatar(avatarId: string): Promise<Avatar> {

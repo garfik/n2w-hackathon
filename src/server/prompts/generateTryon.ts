@@ -69,8 +69,6 @@ export type TryonInput = {
   avatarUploadId: string;
   /** Garments with bbox and metadata */
   garments: GarmentInput[];
-  /** User ID (for creating the result upload record) */
-  userId: string;
 };
 
 export type TryonResult = {
@@ -148,7 +146,7 @@ function buildGarmentLegend(garments: GarmentInput[]): string {
  * 4. Returns the upload ID
  */
 export async function generateTryon(input: TryonInput): Promise<TryonResult> {
-  const { avatarUploadId, garments, userId } = input;
+  const { avatarUploadId, garments } = input;
 
   log.info(
     { avatarUploadId, garmentCount: garments.length },
@@ -239,7 +237,6 @@ export async function generateTryon(input: TryonInput): Promise<TryonResult> {
   // 4. Create upload record
   await db.insert(upload).values({
     id: uploadId,
-    userId,
     originalSha256: imageSha256,
     originalMime: generated.mimeType,
     originalSizeBytes: imageBuffer.length,

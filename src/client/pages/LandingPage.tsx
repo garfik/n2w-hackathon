@@ -1,34 +1,34 @@
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@components/ui/card';
-import { Link, useLoaderData } from 'react-router-dom';
 import { Button } from '@components/ui/button';
+import { hasAvatarIds } from '@client/lib/avatarStorage';
 
 export function LandingPage() {
-  const { loggedIn } = useLoaderData() as { loggedIn: boolean };
+  const navigate = useNavigate();
+
+  const handleStart = () => {
+    if (hasAvatarIds()) {
+      navigate('/app/avatars');
+    } else {
+      navigate('/app/avatars/new');
+    }
+  };
 
   return (
-    <div className="container mx-auto p-8 max-w-2xl">
-      <Card>
-        <CardHeader className="gap-2">
-          <CardTitle className="text-2xl font-bold">Nothing 2 Wear</CardTitle>
-          <CardDescription>
-            Outfit suggestions and virtual try-on based on your avatar and wardrobe.
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="max-w-lg w-full">
+        <CardHeader className="gap-3 text-center">
+          <CardTitle className="text-3xl font-bold tracking-tight">Nothing 2 Wear</CardTitle>
+          <CardDescription className="text-base leading-relaxed">
+            Upload a photo of yourself, add your wardrobe, and get AI&#8209;powered outfit
+            suggestions with virtual try&#8209;on. See how clothes look on <em>you</em> before you
+            decide.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-3">
-          {loggedIn ? (
-            <Button asChild>
-              <Link to="/app">Go to app</Link>
-            </Button>
-          ) : (
-            <>
-              <Button asChild>
-                <Link to="/login">Sign in</Link>
-              </Button>
-              <Button asChild variant="secondary">
-                <Link to="/register">Register</Link>
-              </Button>
-            </>
-          )}
+        <CardContent className="flex justify-center">
+          <Button size="lg" onClick={handleStart}>
+            Let&apos;s try
+          </Button>
         </CardContent>
       </Card>
     </div>

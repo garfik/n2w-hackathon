@@ -1,6 +1,5 @@
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { router } from './router';
-import { requireUser } from '../lib/requireUser';
 import { db } from '../../db/client';
 import { upload } from '../../db/domain.schema';
 import { putObject, getObjectBuffer } from '../lib/storage';
@@ -14,10 +13,6 @@ const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
 export const uploadsRoutes = router({
   '/api/uploads': {
     async POST(req) {
-      const userResult = await requireUser(req);
-      if (userResult instanceof Response) return userResult;
-      const { userId } = userResult;
-
       const contentType = req.headers.get('content-type') ?? '';
       if (!contentType.includes('multipart/form-data')) {
         return apiErr(
@@ -56,7 +51,7 @@ export const uploadsRoutes = router({
       const originalSizeBytes = originalBuffer.length;
 
       logger.info(
-        { userId, originalMime, originalSizeBytes, hashPrefix: originalSha256.slice(0, 12) },
+        { originalMime, originalSizeBytes, hashPrefix: originalSha256.slice(0, 12) },
         'Processing upload'
       );
 
@@ -66,37 +61,10 @@ export const uploadsRoutes = router({
         .where(eq(upload.originalSha256, originalSha256));
 
       if (existing) {
-        if (existing.userId === userId) {
-          logger.info({ uploadId: existing.id }, 'Returning existing upload (same user)');
-          return apiOk({
-            id: existing.id,
-            url: `/api/uploads/${existing.id}/image`,
-            width: existing.width,
-            height: existing.height,
-            mimeType: existing.storedMime,
-          });
-        }
-        // Other user's upload: create link record for current user
-        const newId = crypto.randomUUID();
-        await db.insert(upload).values({
-          id: newId,
-          userId,
-          originalSha256,
-          originalMime,
-          originalSizeBytes,
-          storedKey: existing.storedKey,
-          storedMime: existing.storedMime,
-          storedSizeBytes: existing.storedSizeBytes,
-          width: existing.width,
-          height: existing.height,
-        });
-        logger.info(
-          { uploadId: newId, linkedFrom: existing.id },
-          'Created linked upload (different user, same content)'
-        );
+        logger.info({ uploadId: existing.id }, 'Returning existing upload (dedup by hash)');
         return apiOk({
-          id: newId,
-          url: `/api/uploads/${newId}/image`,
+          id: existing.id,
+          url: `/api/uploads/${existing.id}/image`,
           width: existing.width,
           height: existing.height,
           mimeType: existing.storedMime,
@@ -130,7 +98,6 @@ export const uploadsRoutes = router({
       try {
         await db.insert(upload).values({
           id,
-          userId,
           originalSha256,
           originalMime,
           originalSizeBytes,
@@ -167,19 +134,12 @@ export const uploadsRoutes = router({
 
   '/api/uploads/:id/image': {
     async GET(req) {
-      const userResult = await requireUser(req);
-      if (userResult instanceof Response) return userResult;
-      const { userId } = userResult;
-
       const { id } = req.params;
       if (!id) {
         return apiErr({ code: 'MISSING_ID', message: 'Missing upload ID' }, 400);
       }
 
-      const [row] = await db
-        .select()
-        .from(upload)
-        .where(and(eq(upload.id, id), eq(upload.userId, userId)));
+      const [row] = await db.select().from(upload).where(eq(upload.id, id));
 
       if (!row) {
         return apiErr({ code: 'NOT_FOUND', message: 'Upload not found' }, 404);

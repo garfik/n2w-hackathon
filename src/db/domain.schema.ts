@@ -11,7 +11,6 @@ import {
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import { user } from './auth.schema';
 
 export const generationStatusEnum = pgEnum('generation_status', [
   'pending',
@@ -35,9 +34,6 @@ export const upload = pgTable(
   'upload',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
     // Hash of original file for deduplication
     originalSha256: text('original_sha256').notNull(),
     originalMime: text('original_mime').notNull(),
@@ -50,28 +46,16 @@ export const upload = pgTable(
     height: integer('height').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (table) => [
-    // Deduplication by hash (one record per user+hash)
-    uniqueIndex('upload_user_sha256_idx').on(table.userId, table.originalSha256),
-    index('upload_sha256_idx').on(table.originalSha256),
-    index('upload_user_id_idx').on(table.userId),
-  ]
+  (table) => [uniqueIndex('upload_sha256_unique_idx').on(table.originalSha256)]
 );
 
-export const uploadRelations = relations(upload, ({ one, many }) => ({
-  user: one(user, {
-    fields: [upload.userId],
-    references: [user.id],
-  }),
+export const uploadRelations = relations(upload, ({ many }) => ({
   garments: many(garment),
   garmentDetections: many(garmentDetection),
 }));
 
 export const avatar = pgTable('avatar', {
   id: text('id').primaryKey(),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   photoUploadId: text('photo_upload_id').references(() => upload.id, { onDelete: 'restrict' }),
   bodyProfileJson: jsonb('body_profile_json'),
@@ -83,9 +67,6 @@ export const avatarAnalysis = pgTable(
   'avatar_analysis',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
     avatarId: text('avatar_id')
       .notNull()
       .references(() => avatar.id, { onDelete: 'cascade' }),
@@ -109,9 +90,6 @@ export const garment = pgTable(
   'garment',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
     uploadId: text('upload_id')
       .notNull()
       .references(() => upload.id, { onDelete: 'restrict' }),
@@ -122,7 +100,6 @@ export const garment = pgTable(
     ...timestamps,
   },
   (table) => [
-    index('garment_user_id_idx').on(table.userId),
     index('garment_category_idx').on(table.category),
     index('garment_upload_id_idx').on(table.uploadId),
   ]
@@ -132,9 +109,6 @@ export const garmentDetection = pgTable(
   'garment_detection',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
     uploadId: text('upload_id')
       .notNull()
       .references(() => upload.id, { onDelete: 'cascade' }),
@@ -145,10 +119,7 @@ export const garmentDetection = pgTable(
     confidence: real('confidence'), // 0..1
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (table) => [
-    index('garment_detection_user_id_idx').on(table.userId),
-    index('garment_detection_upload_id_idx').on(table.uploadId),
-  ]
+  (table) => [index('garment_detection_upload_id_idx').on(table.uploadId)]
 );
 
 // ============================================================
@@ -158,9 +129,6 @@ export const outfit = pgTable(
   'outfit',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
     avatarId: text('avatar_id')
       .notNull()
       .references(() => avatar.id, { onDelete: 'cascade' }),
@@ -175,8 +143,7 @@ export const outfit = pgTable(
     ...timestamps,
   },
   (table) => [
-    uniqueIndex('outfit_user_outfit_key_idx').on(table.userId, table.outfitKey),
-    index('outfit_user_id_idx').on(table.userId),
+    uniqueIndex('outfit_avatar_outfit_key_idx').on(table.avatarId, table.outfitKey),
     index('outfit_avatar_id_idx').on(table.avatarId),
   ]
 );
@@ -208,9 +175,6 @@ export const tryon = pgTable(
   'tryon',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
     avatarId: text('avatar_id')
       .notNull()
       .references(() => avatar.id, { onDelete: 'cascade' }),
@@ -223,8 +187,7 @@ export const tryon = pgTable(
     ...timestamps,
   },
   (table) => [
-    uniqueIndex('tryon_user_tryon_key_idx').on(table.userId, table.tryonKey),
-    index('tryon_user_id_idx').on(table.userId),
+    uniqueIndex('tryon_avatar_tryon_key_idx').on(table.avatarId, table.tryonKey),
     index('tryon_avatar_id_idx').on(table.avatarId),
   ]
 );
@@ -233,22 +196,7 @@ export const tryon = pgTable(
 // RELATIONS
 // ============================================================
 
-// Relations: user -> many domain entities (separate from auth userRelations)
-export const userDomainRelations = relations(user, ({ many }) => ({
-  avatars: many(avatar),
-  avatarAnalyses: many(avatarAnalysis),
-  garments: many(garment),
-  garmentDetections: many(garmentDetection),
-  outfits: many(outfit),
-  tryons: many(tryon),
-  uploads: many(upload),
-}));
-
 export const avatarRelations = relations(avatar, ({ one, many }) => ({
-  user: one(user, {
-    fields: [avatar.userId],
-    references: [user.id],
-  }),
   photoUpload: one(upload, {
     fields: [avatar.photoUploadId],
     references: [upload.id],
@@ -259,10 +207,6 @@ export const avatarRelations = relations(avatar, ({ one, many }) => ({
 }));
 
 export const avatarAnalysisRelations = relations(avatarAnalysis, ({ one }) => ({
-  user: one(user, {
-    fields: [avatarAnalysis.userId],
-    references: [user.id],
-  }),
   avatar: one(avatar, {
     fields: [avatarAnalysis.avatarId],
     references: [avatar.id],
@@ -270,10 +214,6 @@ export const avatarAnalysisRelations = relations(avatarAnalysis, ({ one }) => ({
 }));
 
 export const garmentRelations = relations(garment, ({ one }) => ({
-  user: one(user, {
-    fields: [garment.userId],
-    references: [user.id],
-  }),
   upload: one(upload, {
     fields: [garment.uploadId],
     references: [upload.id],
@@ -281,10 +221,6 @@ export const garmentRelations = relations(garment, ({ one }) => ({
 }));
 
 export const garmentDetectionRelations = relations(garmentDetection, ({ one }) => ({
-  user: one(user, {
-    fields: [garmentDetection.userId],
-    references: [user.id],
-  }),
   upload: one(upload, {
     fields: [garmentDetection.uploadId],
     references: [upload.id],
@@ -292,7 +228,6 @@ export const garmentDetectionRelations = relations(garmentDetection, ({ one }) =
 }));
 
 export const outfitRelations = relations(outfit, ({ one, many }) => ({
-  user: one(user, { fields: [outfit.userId], references: [user.id] }),
   avatar: one(avatar, { fields: [outfit.avatarId], references: [avatar.id] }),
   outfitItems: many(outfitItem),
 }));
@@ -303,7 +238,6 @@ export const outfitItemRelations = relations(outfitItem, ({ one }) => ({
 }));
 
 export const tryonRelations = relations(tryon, ({ one }) => ({
-  user: one(user, { fields: [tryon.userId], references: [user.id] }),
   avatar: one(avatar, { fields: [tryon.avatarId], references: [avatar.id] }),
   imageUpload: one(upload, { fields: [tryon.imageUploadId], references: [upload.id] }),
 }));
