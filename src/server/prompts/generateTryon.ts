@@ -17,7 +17,7 @@ const log = logger.child({ module: 'generateTryon' });
 
 const DEBUG_TRYON = process.env.DEBUG_TRYON === 'true';
 
-export const TRYON_IMAGE_MODEL = 'gemini-2.5-flash-image';
+export const TRYON_IMAGE_MODEL = process.env.TRYON_IMAGE_MODEL || 'gemini-2.5-flash-image';
 
 const TRYON_PROMPT = `You are a virtual try-on system that helps people try on clothes.
 

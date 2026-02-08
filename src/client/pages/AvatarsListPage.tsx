@@ -47,7 +47,10 @@ function AvatarCard({ avatar }: { avatar: Avatar }) {
           <CardDescription>
             Created {new Date(avatar.createdAt).toLocaleDateString()}
             {avatar.outfitsCount != null && (
-              <> · {avatar.outfitsCount} generated outfit{avatar.outfitsCount !== 1 ? 's' : ''}</>
+              <>
+                {' '}
+                · {avatar.outfitsCount} generated outfit{avatar.outfitsCount !== 1 ? 's' : ''}
+              </>
             )}
           </CardDescription>
         </CardContent>

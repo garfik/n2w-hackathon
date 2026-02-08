@@ -1,7 +1,7 @@
 import { OutfitScoreSchema } from '@shared/ai-schemas/score';
 import { generateJson } from '@server/lib/gemini';
 
-export const OUTFIT_SCORE_MODEL = 'gemini-2.5-flash';
+export const OUTFIT_SCORE_MODEL = process.env.OUTFIT_SCORE_MODEL || 'gemini-2.5-flash';
 
 export const OUTFIT_SCORE_PROMPT = `You are a strict fashion/styling scoring engine.
 

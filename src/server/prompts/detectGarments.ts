@@ -26,7 +26,7 @@ import {
   DETECT_PRIMARY_COLORS_MAX,
 } from '@shared/ai-schemas/garment';
 
-export const GARMENT_DETECTION_MODEL = 'gemini-2.5-flash';
+export const GARMENT_DETECTION_MODEL = process.env.GARMENT_DETECTION_MODEL || 'gemini-2.5-flash';
 
 const categoryList = DETECT_CATEGORIES.join('|');
 const silhouetteList = DETECT_SILHOUETTES.map((s) => `"${s}"`).join(' | ');

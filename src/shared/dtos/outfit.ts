@@ -6,9 +6,7 @@ export const GenerationStatusSchema = z.enum(['pending', 'running', 'succeeded',
 export type GenerationStatus = z.output<typeof GenerationStatusSchema>;
 
 export const CreateOutfitBodySchema = z.object({
-  garmentIds: z
-    .array(z.string().min(1))
-    .min(1, 'At least one garment is required'),
+  garmentIds: z.array(z.string().min(1)).min(1, 'At least one garment is required'),
   occasion: z.string().min(1, 'Occasion is required'),
 });
 export type CreateOutfitBody = z.input<typeof CreateOutfitBodySchema>;

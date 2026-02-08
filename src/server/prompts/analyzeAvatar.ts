@@ -1,7 +1,7 @@
 import { AvatarAnalysisResultSchema, type AvatarAnalysisResult } from '@shared/ai-schemas/avatar';
 import { generateJson, type ImageInput } from '@server/lib/gemini';
 
-export const AVATAR_ANALYSIS_MODEL = 'gemini-2.5-flash';
+export const AVATAR_ANALYSIS_MODEL = process.env.AVATAR_ANALYSIS_MODEL || 'gemini-2.5-flash';
 
 const PROMPT = `You are a strict computer vision + fashion/styling analyst.
 
