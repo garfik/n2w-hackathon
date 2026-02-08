@@ -1,4 +1,8 @@
-CREATE TYPE "public"."generation_status" AS ENUM('pending', 'running', 'succeeded', 'failed');--> statement-breakpoint
+DO $$ BEGIN
+  CREATE TYPE "public"."generation_status" AS ENUM('pending', 'running', 'succeeded', 'failed');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "garment_detection" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
@@ -31,23 +35,42 @@ CREATE TABLE IF NOT EXISTS "tryon" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "outfit_analysis" DISABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "outfit_garment" DISABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "tryon_result" DISABLE ROW LEVEL SECURITY;--> statement-breakpoint
-DROP TABLE "outfit_analysis" CASCADE;--> statement-breakpoint
-DROP TABLE "outfit_garment" CASCADE;--> statement-breakpoint
-DROP TABLE "tryon_result" CASCADE;--> statement-breakpoint
-ALTER TABLE "avatar" RENAME COLUMN "source_photo_key" TO "photo_upload_id";--> statement-breakpoint
-ALTER TABLE "garment" RENAME COLUMN "original_image_key" TO "upload_id";--> statement-breakpoint
-ALTER TABLE "garment" ALTER COLUMN "name" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "garment" ADD COLUMN "bbox_norm" jsonb;--> statement-breakpoint
-ALTER TABLE "garment" ADD COLUMN "category" text;--> statement-breakpoint
-ALTER TABLE "outfit" ADD COLUMN "outfit_key" text NOT NULL;--> statement-breakpoint
-ALTER TABLE "outfit" ADD COLUMN "tryon_key" text NOT NULL;--> statement-breakpoint
-ALTER TABLE "outfit" ADD COLUMN "status" "generation_status" DEFAULT 'pending' NOT NULL;--> statement-breakpoint
-ALTER TABLE "outfit" ADD COLUMN "error_code" text;--> statement-breakpoint
-ALTER TABLE "outfit" ADD COLUMN "error_message" text;--> statement-breakpoint
-ALTER TABLE "outfit" ADD COLUMN "generation_started_at" timestamp;--> statement-breakpoint
+DROP TABLE IF EXISTS "outfit_analysis" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "outfit_garment" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "tryon_result" CASCADE;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "avatar" RENAME COLUMN "source_photo_key" TO "photo_upload_id";
+EXCEPTION WHEN undefined_column THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "garment" RENAME COLUMN "original_image_key" TO "upload_id";
+EXCEPTION WHEN undefined_column THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "garment" ALTER COLUMN "name" DROP NOT NULL;
+EXCEPTION WHEN undefined_column THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "garment" ADD COLUMN "bbox_norm" jsonb;
+EXCEPTION WHEN duplicate_column THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "garment" ADD COLUMN "category" text;
+EXCEPTION WHEN duplicate_column THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "outfit" ADD COLUMN "outfit_key" text NOT NULL;
+EXCEPTION WHEN duplicate_column THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "outfit" ADD COLUMN "tryon_key" text NOT NULL;
+EXCEPTION WHEN duplicate_column THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "outfit" ADD COLUMN "status" "generation_status" DEFAULT 'pending' NOT NULL;
+EXCEPTION WHEN duplicate_column THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "outfit" ADD COLUMN "error_code" text;
+EXCEPTION WHEN duplicate_column THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "outfit" ADD COLUMN "error_message" text;
+EXCEPTION WHEN duplicate_column THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "outfit" ADD COLUMN "generation_started_at" timestamp;
+EXCEPTION WHEN duplicate_column THEN null; END $$;--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "garment_detection" ADD CONSTRAINT "garment_detection_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
