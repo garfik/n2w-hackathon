@@ -1,6 +1,6 @@
 /**
  * Generate avatar image: body + face photos + default outfit → one composite photo.
- * Preprocesses body and face (remove background, crop), then Gemini image generation.
+ * Sends raw images to Gemini with interleaved labels.
  */
 
 import { join } from 'path';
@@ -12,7 +12,6 @@ import { db } from '../../db/client';
 import { upload } from '../../db/domain.schema';
 import { sha256 } from '@server/lib/hash';
 import { logger } from '@server/lib/logger';
-import { preprocessAvatarPhoto } from '@server/lib/image/preprocessAvatarPhoto';
 
 const log = logger.child({ module: 'generateAvatarImage' });
 
@@ -23,7 +22,7 @@ export const AVATAR_IMAGE_MODEL = 'gemini-3-pro-image-preview';
 const INTRO_AND_BODY = `Edit the following person photo to change their clothes and refine their face.
 Here is the person's FULL BODY photo — use this for body shape, proportions, build, and skin tone. Ignore their current clothing:`;
 
-const FACE_INTRO = `Here is a CLOSE-UP FACE photo of the same person — use this to refine the face in the output. Copy exact facial features, hair style, and hair color from this close-up:`;
+const FACE_INTRO = `Here is a CLOSE-UP FACE photo of the same person — use this to refine the face in the output. Copy exact facial features, hair style, and hair color from this close-up. Enhance the face with subtle, complimentary light makeup (even skin tone, soft natural blush, light mascara, neutral lip tint) and neat, polished hairstyling that suits the person's hair type and length:`;
 
 const OUTFIT_INTRO = `Here is the TARGET OUTFIT — redress the person in exactly these clothes. Copy the garment colors, patterns, and silhouettes. Fit them naturally to the person's body from the first photo:`;
 
@@ -31,6 +30,8 @@ const FINAL_INSTRUCTION = `Now generate the final image:
 - Take the person from the first photo (body shape, proportions, skin tone)
 - Apply the face details from the second photo (facial features, hair)
 - Dress them in the outfit from the third photo
+- Add subtle, flattering light makeup: even skin tone, soft natural blush, light mascara, neutral lip color — keep it natural and complimentary, not heavy or dramatic
+- Style the hair neatly: tidy and polished version of the person's natural hair, keeping the same color and approximate length
 - Neutral front-facing standing pose, head to feet visible
 - Clean solid white or light gray background
 - ONE person, ONE image, no text, no watermark
@@ -43,13 +44,6 @@ export type GenerateAvatarImageInput = {
 
 export type GenerateAvatarImageResult = {
   uploadId: string;
-  /** Temporary debug: processed images sent to Gemini (when DEBUG_AVATAR_GENERATION=true) */
-  debug?: {
-    processedBodyBase64: string;
-    processedBodyMime: string;
-    processedFaceBase64: string;
-    processedFaceMime: string;
-  };
 };
 
 async function loadBufferFromUpload(uploadId: string): Promise<{ buffer: Buffer; mime: string }> {
@@ -75,16 +69,11 @@ export async function generateAvatarImage(
 ): Promise<GenerateAvatarImageResult> {
   const { bodyPhotoUploadId, facePhotoUploadId } = input;
 
-  log.info({ bodyPhotoUploadId, facePhotoUploadId }, 'loading and preprocessing avatar photos');
+  log.info({ bodyPhotoUploadId, facePhotoUploadId }, 'loading avatar photos');
 
   const [bodyData, faceData] = await Promise.all([
     loadBufferFromUpload(bodyPhotoUploadId),
     loadBufferFromUpload(facePhotoUploadId),
-  ]);
-
-  const [processedBody, processedFace] = await Promise.all([
-    preprocessAvatarPhoto(bodyData.buffer, bodyData.mime),
-    preprocessAvatarPhoto(faceData.buffer, faceData.mime),
   ]);
 
   const outfitPath = getDefaultOutfitPath();
@@ -94,12 +83,11 @@ export async function generateAvatarImage(
   }
   const outfitBuffer = Buffer.from(await outfitFile.arrayBuffer());
 
-  // Interleave text→image so Gemini sees: body intro → body img → face intro → face img → outfit intro → outfit img → final task
   const contentParts: ContentPart[] = [
     { text: INTRO_AND_BODY },
-    { inlineData: { data: processedBody.buffer.toString('base64'), mimeType: processedBody.mimeType } },
+    { inlineData: { data: bodyData.buffer.toString('base64'), mimeType: bodyData.mime } },
     { text: FACE_INTRO },
-    { inlineData: { data: processedFace.buffer.toString('base64'), mimeType: processedFace.mimeType } },
+    { inlineData: { data: faceData.buffer.toString('base64'), mimeType: faceData.mime } },
     { text: OUTFIT_INTRO },
     { inlineData: { data: outfitBuffer.toString('base64'), mimeType: 'image/jpeg' } },
     { text: FINAL_INSTRUCTION },
@@ -108,7 +96,7 @@ export async function generateAvatarImage(
   log.info({ partCount: contentParts.length }, 'calling Gemini for avatar image generation');
 
   const generated = await generateImage({
-    prompt: '', // unused when contentParts is set
+    prompt: '',
     contentParts,
     responseModalities: ['text', 'image'],
     model: AVATAR_IMAGE_MODEL,
@@ -144,15 +132,5 @@ export async function generateAvatarImage(
 
   log.info({ uploadId, width, height }, 'avatar image saved');
 
-  // Temporary debug: include processed images in response for UI
-  const result: GenerateAvatarImageResult = {
-    uploadId,
-    debug: {
-      processedBodyBase64: processedBody.buffer.toString('base64'),
-      processedBodyMime: processedBody.mimeType,
-      processedFaceBase64: processedFace.buffer.toString('base64'),
-      processedFaceMime: processedFace.mimeType,
-    },
-  };
-  return result;
+  return { uploadId };
 }

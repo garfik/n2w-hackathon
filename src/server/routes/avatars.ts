@@ -124,7 +124,7 @@ export const avatarsRoutes = router({
         const result = await generateAvatarImage({ bodyPhotoUploadId, facePhotoUploadId });
         const dtoResult = parseResponseDto(GenerateAvatarImageResponseDtoSchema, {
           success: true as const,
-          data: { uploadId: result.uploadId, ...(result.debug && { debug: result.debug }) },
+          data: { uploadId: result.uploadId },
         });
         if (!dtoResult.ok) return dtoResult.response;
         return Response.json(dtoResult.data);

@@ -58,18 +58,8 @@ export const GenerateAvatarImageBodySchema = z.object({
 });
 export type GenerateAvatarImageBody = z.output<typeof GenerateAvatarImageBodySchema>;
 
-const GenerateAvatarImageDebugSchema = z.object({
-  processedBodyBase64: z.string(),
-  processedBodyMime: z.string(),
-  processedFaceBase64: z.string(),
-  processedFaceMime: z.string(),
-});
-
 export const GenerateAvatarImageResponseDtoSchema = apiSuccessSchema(
-  z.object({
-    uploadId: z.string().uuid(),
-    debug: GenerateAvatarImageDebugSchema.optional(),
-  })
+  z.object({ uploadId: z.string().uuid() })
 );
 export type GenerateAvatarImageResponseDto = z.output<typeof GenerateAvatarImageResponseDtoSchema>;
 
