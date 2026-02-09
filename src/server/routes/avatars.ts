@@ -23,6 +23,7 @@ import {
   GenerateAvatarImageResponseDtoSchema,
 } from '@shared/dtos/avatar';
 import { generateAvatarImage } from '../prompts/generateAvatarImage';
+import { GeminiDailyLimitError } from '../lib/gemini';
 
 /** Parse payload with schema; on validation failure return 422. */
 function parseResponseDto<T>(
@@ -117,7 +118,7 @@ export const avatarsRoutes = router({
       const mimeType = uploadRow.storedMime;
 
       try {
-        const raw = await analyzeAvatarLib([{ base64, mimeType }]);
+        const raw = await analyzeAvatarLib([{ base64, mimeType }], bodyPhotoUploadId);
         const analysisResult = AvatarAnalysisResultSchema.safeParse(raw);
         if (!analysisResult.success) {
           return apiErr({ message: 'Invalid analysis response' }, 502);
@@ -143,6 +144,9 @@ export const avatarsRoutes = router({
         if (!dtoResult.ok) return dtoResult.response;
         return Response.json(dtoResult.data);
       } catch (err) {
+        if (err instanceof GeminiDailyLimitError) {
+          return apiErr({ message: err.message }, err.status ?? 429);
+        }
         const message = err instanceof Error ? err.message : String(err);
         logger.error({ err, bodyPhotoUploadId }, 'analyze body photo failed');
         return apiErr({ message: message.length > 500 ? message.slice(0, 500) : message }, 502);
@@ -196,6 +200,9 @@ export const avatarsRoutes = router({
         if (!dtoResult.ok) return dtoResult.response;
         return Response.json(dtoResult.data);
       } catch (err) {
+        if (err instanceof GeminiDailyLimitError) {
+          return apiErr({ message: err.message }, err.status ?? 429);
+        }
         const message = err instanceof Error ? err.message : String(err);
         logger.error({ err, bodyPhotoUploadId, facePhotoUploadId }, 'generate avatar image failed');
         return apiErr({ message: message.length > 500 ? message.slice(0, 500) : message }, 502);
@@ -269,7 +276,7 @@ export const avatarsRoutes = router({
 
       // No cache - run analysis
       const base64 = buffer.toString('base64');
-      const raw = await analyzeAvatarLib([{ base64, mimeType }]);
+      const raw = await analyzeAvatarLib([{ base64, mimeType }], uploadRow.id);
       const analysisResult = AvatarAnalysisResultSchema.safeParse(raw);
       if (!analysisResult.success) {
         return apiErr({ message: 'Invalid analysis response' }, 502);

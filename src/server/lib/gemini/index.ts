@@ -9,4 +9,4 @@ export {
   type ImageInput,
   type ContentPart,
 } from './client';
-export { GeminiClientError, GeminiParseError } from './errors';
+export { GeminiClientError, GeminiDailyLimitError, GeminiParseError } from './errors';

@@ -36,6 +36,8 @@ export type GenerateGarmentImageInput = {
   category: string | null;
   /** Garment label (e.g. "black hoodie", "blue jeans") */
   label: string | null;
+  /** Upload ID of the garment image */
+  uploadId: string;
 };
 
 export type GenerateGarmentImageResult = {
@@ -46,7 +48,7 @@ export type GenerateGarmentImageResult = {
 export async function generateGarmentImage(
   input: GenerateGarmentImageInput
 ): Promise<GenerateGarmentImageResult> {
-  const { image, category, label } = input;
+  const { image, category, label, uploadId } = input;
 
   const prompt = buildPrompt(category, label);
 
@@ -67,6 +69,8 @@ export async function generateGarmentImage(
     responseModalities: ['text', 'image'],
     model: GARMENT_IMAGE_MODEL,
     timeoutMs: 60_000,
+    promptType: 'garment_image_generation',
+    relatedId: uploadId,
   });
 
   log.info({ mimeType: generated.mimeType }, 'garment image generated');

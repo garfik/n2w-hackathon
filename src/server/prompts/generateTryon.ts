@@ -213,6 +213,8 @@ export async function generateTryon(input: TryonInput): Promise<TryonResult> {
     images,
     model: TRYON_IMAGE_MODEL,
     timeoutMs: 60_000, // image generation can be slow
+    promptType: 'tryon_image_generation',
+    relatedId: avatarUploadId,
   });
 
   log.info({ mimeType: generated.mimeType }, 'tryon image generated, saving to storage');

@@ -109,6 +109,8 @@ export async function generateAvatarImage(
     responseModalities: ['text', 'image'],
     model: AVATAR_IMAGE_MODEL,
     timeoutMs: 90_000,
+    promptType: 'avatar_generate_image',
+    relatedId: bodyPhotoUploadId,
   });
 
   log.info({ mimeType: generated.mimeType }, 'avatar image generated, saving to storage');

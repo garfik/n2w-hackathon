@@ -6,7 +6,10 @@
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import { logger } from '@server/lib/logger';
-import { GeminiClientError, GeminiParseError } from './errors';
+import { GeminiClientError, GeminiDailyLimitError, GeminiParseError } from './errors';
+import { db } from '../../../db/client';
+import { tokenUsage } from '../../../db/domain.schema';
+import { sql } from 'drizzle-orm';
 
 const log = logger.child({ module: 'gemini' });
 
@@ -71,6 +74,15 @@ export type ImageInput = {
 export type GenerateOptions = {
   model?: string;
   timeoutMs?: number;
+  /**
+   * Logical type of prompt for accounting, e.g. "avatar_analysis", "avatar_generate_image".
+   */
+  promptType?: string;
+  /**
+   * Optional related business id (avatar id, outfit id, upload id, etc.).
+   * Stored as string so you can flexibly encode anything.
+   */
+  relatedId?: string;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,6 +94,74 @@ export type GenerateJsonOptions<S extends z.ZodTypeAny> = GenerateOptions & {
   schema: S;
   images?: ImageInput[];
 };
+
+type UsageMetadata =
+  | {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      totalTokenCount?: number;
+    }
+  | null
+  | undefined;
+
+const DAILY_TOKEN_LIMIT =
+  process.env.GEMINI_DAILY_TOKEN_LIMIT &&
+  !Number.isNaN(Number(process.env.GEMINI_DAILY_TOKEN_LIMIT))
+    ? Number(process.env.GEMINI_DAILY_TOKEN_LIMIT)
+    : 0;
+
+async function getTokensUsedToday(): Promise<number> {
+  if (!DAILY_TOKEN_LIMIT) return 0;
+
+  const [row] = await db
+    .select({
+      totalTokens: sql<number>`coalesce(sum(${tokenUsage.totalTokens}), 0)`,
+    })
+    .from(tokenUsage)
+    .where(sql`${tokenUsage.usageDate} = (now() AT TIME ZONE 'UTC')::date`);
+
+  return row?.totalTokens ?? 0;
+}
+
+async function ensureDailyLimitNotExceeded(): Promise<void> {
+  if (!DAILY_TOKEN_LIMIT) return;
+  const usedToday = await getTokensUsedToday();
+  if (usedToday >= DAILY_TOKEN_LIMIT) {
+    throw new GeminiDailyLimitError();
+  }
+}
+
+async function logTokenUsage(params: {
+  model: string;
+  promptType?: string;
+  relatedId?: string;
+  usage: UsageMetadata;
+  succeeded: boolean;
+}): Promise<void> {
+  const usage = params.usage ?? null;
+  const promptTokens = usage?.promptTokenCount ?? 0;
+  const completionTokens = usage?.candidatesTokenCount ?? 0;
+  const totalTokens = usage?.totalTokenCount ?? promptTokens + completionTokens;
+
+  // Skip logging if the model reported zero tokens (no billable usage).
+  if (!totalTokens) return;
+
+  try {
+    await db.insert(tokenUsage).values({
+      id: crypto.randomUUID(),
+      model: params.model,
+      promptType: params.promptType ?? null,
+      relatedId: params.relatedId ?? null,
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      succeeded: params.succeeded,
+    });
+  } catch (err) {
+    // Token usage logging must never break the main flow.
+    log.warn({ err }, 'token_usage_log_failed');
+  }
+}
 
 /**
  * Calls Gemini, parses JSON response, validates with Zod schema.
@@ -97,11 +177,15 @@ export async function generateJson<S extends z.ZodTypeAny>(
     images,
     model = process.env.GEMINI_MODEL_TEXT ?? 'gemini-2.0-flash',
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    promptType,
+    relatedId,
   } = options;
 
   const requestId = crypto.randomUUID();
   const start = Date.now();
   let lastError: Error | null = null;
+
+  await ensureDailyLimitNotExceeded();
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const controller = new AbortController();
@@ -138,22 +222,26 @@ export async function generateJson<S extends z.ZodTypeAny>(
 
       clearTimeout(timeout);
       const latencyMs = Date.now() - start;
-      const text = (response.text ?? '').trim();
+      const usage = (response as { usageMetadata?: UsageMetadata } | undefined)
+        ?.usageMetadata as UsageMetadata;
 
-      // Parse and validate JSON
+      const text = (response.text ?? '').trim();
       const json = extractJson(text);
       const parsed = tryParseJson(json);
 
       if (parsed === null) {
+        await logTokenUsage({ model, promptType, relatedId, usage, succeeded: false });
         throw new GeminiParseError('Invalid JSON from model');
       }
 
       const validated = schema.safeParse(parsed);
       if (!validated.success) {
+        await logTokenUsage({ model, promptType, relatedId, usage, succeeded: false });
         throw new GeminiParseError(`Schema validation failed: ${validated.error.message}`);
       }
 
-      log.info({ requestId, latencyMs }, 'ok');
+      await logTokenUsage({ model, promptType, relatedId, usage, succeeded: true });
+      log.info({ requestId, latencyMs, usage }, 'ok');
       return validated.data;
     } catch (err) {
       clearTimeout(timeout);
@@ -256,11 +344,15 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
     responseModalities = ['image'],
     model = 'gemini-2.5-flash-image',
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    promptType,
+    relatedId,
   } = options;
 
   const requestId = crypto.randomUUID();
   const start = Date.now();
   let lastError: Error | null = null;
+
+  await ensureDailyLimitNotExceeded();
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const controller = new AbortController();
@@ -296,16 +388,20 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
 
       clearTimeout(timeout);
       const latencyMs = Date.now() - start;
+      const usage = (response as { usageMetadata?: UsageMetadata } | undefined)
+        ?.usageMetadata as UsageMetadata;
 
       // Extract image from response
       const parts = response.candidates?.[0]?.content?.parts;
       const imagePart = parts?.find((p) => p.inlineData);
 
       if (!imagePart?.inlineData) {
+        await logTokenUsage({ model, promptType, relatedId, usage, succeeded: false });
         throw new GeminiParseError('No image in response');
       }
 
-      log.info({ requestId, latencyMs }, 'ok');
+      await logTokenUsage({ model, promptType, relatedId, usage, succeeded: true });
+      log.info({ requestId, latencyMs, usage }, 'ok');
       return {
         base64: imagePart.inlineData.data ?? '',
         mimeType: imagePart.inlineData.mimeType ?? 'image/png',

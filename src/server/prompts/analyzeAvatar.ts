@@ -106,11 +106,16 @@ Now analyze the image and respond with JSON only.`;
 /**
  * Analyzes avatar image(s) and returns body profile or error.
  */
-export async function analyzeAvatar(images: ImageInput[]): Promise<AvatarAnalysisResult> {
+export async function analyzeAvatar(
+  images: ImageInput[],
+  imageId: string
+): Promise<AvatarAnalysisResult> {
   return generateJson({
     prompt: PROMPT,
     schema: AvatarAnalysisResultSchema,
     images,
     model: AVATAR_ANALYSIS_MODEL,
+    promptType: 'avatar_analysis',
+    relatedId: imageId,
   });
 }

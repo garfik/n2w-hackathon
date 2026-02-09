@@ -92,11 +92,14 @@ export async function scoreOutfit(input: {
   avatarProfile: unknown;
   occasion: string;
   garments: Array<{ name: string | null; category: string | null; garmentProfile: unknown }>;
+  outfitId: string;
 }) {
   return generateJson({
     prompt: buildPrompt(input),
     schema: OutfitScoreSchema,
     model: OUTFIT_SCORE_MODEL,
     timeoutMs: 30_000,
+    promptType: 'outfit_scoring',
+    relatedId: input.outfitId,
   });
 }

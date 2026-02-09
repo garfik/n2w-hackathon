@@ -22,3 +22,11 @@ export class GeminiParseError extends Error {
     this.name = 'GeminiParseError';
   }
 }
+
+/** Thrown when the daily Gemini token limit is exceeded. Use in routing to return 429. */
+export class GeminiDailyLimitError extends GeminiClientError {
+  constructor(message = 'Daily token limit reached. Try again tomorrow.') {
+    super(message, 'GEMINI_DAILY_LIMIT', 429);
+    this.name = 'GeminiDailyLimitError';
+  }
+}

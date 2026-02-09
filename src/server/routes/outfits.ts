@@ -454,6 +454,7 @@ export const outfitsRoutes = router({
           avatarProfile,
           occasion: outfitRow.occasion,
           garments: garmentInputs,
+          outfitId: outfitRow.id,
         });
 
         await db

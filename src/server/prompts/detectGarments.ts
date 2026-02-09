@@ -137,6 +137,7 @@ Now analyze the image and output JSON only.`;
 
 export type DetectGarmentsInput = {
   image: { buffer: Buffer; mimeType: string };
+  uploadId: string;
 };
 
 /**
@@ -154,6 +155,8 @@ export async function detectGarmentsFromImage(
     images,
     model: GARMENT_DETECTION_MODEL,
     timeoutMs: 30_000,
+    promptType: 'garment_detection',
+    relatedId: input.uploadId,
   });
 
   // Sort by confidence descending (prompt asks for it; enforce in code)

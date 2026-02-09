@@ -1,6 +1,8 @@
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -73,8 +75,6 @@ export const avatarAnalysis = pgTable(
     photoHash: text('photo_hash').notNull(),
     modelVersion: text('model_version').notNull().default('gemini-avatar-v1'),
     responseJson: jsonb('response_json').notNull(),
-    promptTokens: integer('prompt_tokens'),
-    completionTokens: integer('completion_tokens'),
     ...timestamps,
   },
   (table) => [
@@ -241,3 +241,28 @@ export const tryonRelations = relations(tryon, ({ one }) => ({
   avatar: one(avatar, { fields: [tryon.avatarId], references: [avatar.id] }),
   imageUpload: one(upload, { fields: [tryon.imageUploadId], references: [upload.id] }),
 }));
+
+// ============================================================
+// GEMINI TOKEN USAGE LOGS — global per-request accounting
+// ============================================================
+
+export const tokenUsage = pgTable(
+  'token_usage',
+  {
+    id: text('id').primaryKey(),
+    model: text('model').notNull(),
+    promptType: text('prompt_type'),
+    relatedId: text('related_id'),
+    promptTokens: integer('prompt_tokens').notNull().default(0),
+    completionTokens: integer('completion_tokens').notNull().default(0),
+    totalTokens: integer('total_tokens').notNull().default(0),
+    /** Whether the request produced a usable result (valid JSON / image). */
+    succeeded: boolean('succeeded').notNull().default(true),
+    /** UTC calendar day of the request, for fast daily limits & aggregation. */
+    usageDate: date('usage_date')
+      .notNull()
+      .default(sql`(now() AT TIME ZONE 'UTC')::date`),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('token_usage_usage_date_idx').on(table.usageDate)]
+);

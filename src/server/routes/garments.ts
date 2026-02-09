@@ -155,6 +155,7 @@ export const garmentsRoutes = router({
 
       const { detections: aiDetections } = await detectGarmentsFromImage({
         image: { buffer, mimeType: uploadRow.storedMime },
+        uploadId,
       });
 
       const imageUrl = `/api/uploads/${uploadId}/image`;
@@ -296,6 +297,7 @@ export const garmentsRoutes = router({
         },
         category: category ?? null,
         label: label ?? null,
+        uploadId: sourceUploadId,
       });
 
       // Save result to S3 and create upload record
