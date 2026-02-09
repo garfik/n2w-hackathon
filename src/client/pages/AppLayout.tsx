@@ -3,6 +3,7 @@ import { hasAvatarIds } from '@client/lib/avatarStorage';
 import { Button } from '@components/ui/button';
 import { Shirt, User, Menu, X, ImageIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import faviconUrl from '@client/assets/favicon-vector.svg';
 
 export function AppLayout() {
   const location = useLocation();
@@ -43,8 +44,8 @@ export function AppLayout() {
             to="/"
             className="flex items-center gap-2 font-bold text-lg tracking-tight text-foreground hover:opacity-80 transition-opacity"
           >
-            <div className="size-8 rounded-lg bg-primary flex items-center justify-center">
-              <Shirt className="size-4 text-primary-foreground" />
+            <div className="size-8 flex items-center justify-center">
+              <img src={faviconUrl} alt="Nothing 2 Wear" className="size-8" />
             </div>
             <span className="hidden sm:inline">Nothing 2 Wear</span>
             <span className="sm:hidden">N2W</span>
