@@ -1,8 +1,6 @@
-import { useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@components/ui/card';
 import { Badge } from '@components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@components/ui/tabs';
 import { Skeleton } from '@components/ui/skeleton';
 import { Button } from '@components/ui/button';
 import { Progress } from '@components/ui/progress';
@@ -76,13 +74,6 @@ export function OutfitDetailPage() {
   const scoreMutation = useGenerateScore();
   const tryonMutation = useGenerateTryon();
 
-  // Auto-trigger tryon if pending and tryon exists
-  useEffect(() => {
-    if (outfit?.tryon?.status === 'pending' && outfitId && !tryonMutation.isPending) {
-      tryonMutation.mutate(outfitId);
-    }
-  }, [outfit?.tryon?.status, outfitId, tryonMutation]);
-
   if (error) {
     return (
       <div className="max-w-3xl mx-auto">
@@ -137,7 +128,7 @@ export function OutfitDetailPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -156,237 +147,54 @@ export function OutfitDetailPage() {
         <Badge variant={statusBadgeVariant(outfit.status)}>{outfit.status}</Badge>
       </div>
 
-      <Tabs defaultValue="overview">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="score">Score</TabsTrigger>
-          <TabsTrigger value="tryon">Try-on</TabsTrigger>
-        </TabsList>
-
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5" />
-                Garments ({outfit.garments.length})
-              </CardTitle>
-              <CardDescription>Items in this outfit</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 grid-cols-2 sm:grid-cols-3">
-                {outfit.garments.map((g) => (
-                  <Link
-                    key={g.id}
-                    to={`/app/garments/${g.id}`}
-                    className="rounded-lg border overflow-hidden hover:shadow-md transition-shadow"
-                  >
-                    <div className="h-32 w-full bg-muted/50">
-                      {g.thumbnailUrl ? (
-                        <img
-                          src={g.thumbnailUrl}
-                          alt={g.name ?? 'Garment'}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="h-full w-full flex items-center justify-center text-muted-foreground">
-                          <ImageIcon className="h-8 w-8" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-2">
-                      <p className="font-medium text-sm truncate">{g.name ?? 'Unnamed'}</p>
-                      {g.category && (
-                        <Badge variant="secondary" className="mt-1 text-xs">
-                          {g.category}
-                        </Badge>
-                      )}
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Quick summary if score exists */}
-          {score && (
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="text-3xl font-bold">{score.scores.overall}</div>
-                    <div>
-                      <Badge className={verdictColor(score.verdict)}>
-                        {score.verdict === 'great'
-                          ? 'Great'
-                          : score.verdict === 'ok'
-                            ? 'OK'
-                            : 'Not Recommended'}
-                      </Badge>
-                    </div>
-                  </div>
-                  <Star className="h-8 w-8 text-muted-foreground/30" />
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        {/* Score Tab */}
-        <TabsContent value="score" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Star className="h-5 w-5" />
-                Outfit Score
-              </CardTitle>
-              <CardDescription>
-                AI-powered scoring of fit, color harmony, and occasion match
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {outfit.status === 'pending' || outfit.status === 'failed' ? (
-                <div className="text-center py-6 space-y-4">
-                  {outfit.status === 'failed' && outfit.errorCode && (
-                    <div className="bg-destructive/10 text-destructive rounded-lg p-4 text-sm">
-                      <p className="font-medium">Score generation failed</p>
-                      <p className="mt-1">{outfit.errorMessage}</p>
-                    </div>
-                  )}
-                  <p className="text-muted-foreground">
-                    {outfit.status === 'pending'
-                      ? 'Generate an AI score for this outfit combination.'
-                      : 'Try generating the score again.'}
-                  </p>
-                  <Button onClick={handleGenerateScore} disabled={scoreMutation.isPending}>
-                    {scoreMutation.isPending ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Generating...
-                      </>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left: Garments card with vertical list */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5" />
+              Garments ({outfit.garments.length})
+            </CardTitle>
+            <CardDescription>Items in this outfit</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-3">
+              {outfit.garments.map((g) => (
+                <Link
+                  key={g.id}
+                  to={`/app/garments/${g.id}`}
+                  className="flex items-center gap-3 rounded-lg border p-2 hover:shadow-md transition-shadow"
+                >
+                  <div className="h-16 w-16 shrink-0 rounded-md overflow-hidden bg-muted/50">
+                    {g.thumbnailUrl ? (
+                      <img
+                        src={g.thumbnailUrl}
+                        alt={g.name ?? 'Garment'}
+                        className="h-full w-full object-cover"
+                      />
                     ) : (
-                      <>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Generate Score
-                      </>
-                    )}
-                  </Button>
-                </div>
-              ) : outfit.status === 'running' || scoreMutation.isPending ? (
-                <div className="space-y-4 py-4">
-                  <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    <p>Analyzing your outfit...</p>
-                  </div>
-                  <div className="space-y-3">
-                    {[
-                      'Fit Balance',
-                      'Proportions',
-                      'Color Harmony',
-                      'Occasion Match',
-                      'Season & Material',
-                    ].map((label) => (
-                      <div key={label} className="space-y-1">
-                        <div className="flex justify-between text-sm">
-                          <Skeleton className="h-4 w-24" />
-                          <Skeleton className="h-4 w-8" />
-                        </div>
-                        <Skeleton className="h-2 w-full" />
+                      <div className="h-full w-full flex items-center justify-center text-muted-foreground">
+                        <ImageIcon className="h-6 w-6" />
                       </div>
-                    ))}
+                    )}
                   </div>
-                </div>
-              ) : score ? (
-                <div className="space-y-6">
-                  {/* Overall score + verdict */}
-                  <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Overall Score</p>
-                      <p className="text-4xl font-bold">{score.scores.overall}</p>
-                    </div>
-                    <Badge className={`text-sm px-3 py-1 ${verdictColor(score.verdict)}`}>
-                      {score.verdict === 'great'
-                        ? 'Great Outfit!'
-                        : score.verdict === 'ok'
-                          ? 'Decent Outfit'
-                          : 'Not Recommended'}
-                    </Badge>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm truncate">{g.name ?? 'Unnamed'}</p>
+                    {g.category && (
+                      <Badge variant="secondary" className="mt-1 text-xs">
+                        {g.category}
+                      </Badge>
+                    )}
                   </div>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
-                  {/* Score breakdown */}
-                  <div className="space-y-3">
-                    <ScoreBar label="Fit & Balance" value={score.scores.fit_balance} />
-                    <ScoreBar label="Proportions" value={score.scores.proportions} />
-                    <ScoreBar label="Color Harmony" value={score.scores.color_harmony} />
-                    <ScoreBar label="Occasion Match" value={score.scores.occasion_match} />
-                    <ScoreBar label="Season & Material" value={score.scores.season_material} />
-                  </div>
-
-                  {/* Why */}
-                  {score.why.length > 0 && (
-                    <div>
-                      <h4 className="font-medium mb-2">Analysis</h4>
-                      <ul className="space-y-1 text-sm text-muted-foreground">
-                        {score.why.map((w, i) => (
-                          <li key={i} className="flex gap-2">
-                            <span className="text-primary mt-0.5">•</span>
-                            <span>{w}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Improvements */}
-                  {score.improvements.length > 0 && (
-                    <div>
-                      <h4 className="font-medium mb-2">Suggestions</h4>
-                      <ul className="space-y-1 text-sm text-muted-foreground">
-                        {score.improvements.map((imp, i) => (
-                          <li key={i} className="flex gap-2">
-                            <span className="text-yellow-500 mt-0.5">→</span>
-                            <span>{imp}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Alternatives */}
-                  {score.alternatives && score.alternatives.length > 0 && (
-                    <div>
-                      <h4 className="font-medium mb-2">Alternatives to consider</h4>
-                      <ul className="space-y-1 text-sm text-muted-foreground">
-                        {score.alternatives.map((alt, i) => (
-                          <li key={i} className="flex gap-2">
-                            <span className="text-blue-500 mt-0.5">✦</span>
-                            <span>{alt}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Re-generate button */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleGenerateScore}
-                    disabled={scoreMutation.isPending}
-                  >
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Re-score
-                  </Button>
-                </div>
-              ) : (
-                <p className="text-muted-foreground text-sm">No score data available.</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Try-on Tab */}
-        <TabsContent value="tryon" className="space-y-4">
+        {/* Right: Try-on on top, Score below */}
+        <div className="flex flex-col gap-6">
+          {/* Try-on card */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -480,8 +288,148 @@ export function OutfitDetailPage() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+
+          {/* Score card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Star className="h-5 w-5" />
+                Outfit Score
+              </CardTitle>
+              <CardDescription>
+                AI-powered scoring of fit, color harmony, and occasion match
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {outfit.status === 'pending' || outfit.status === 'failed' ? (
+                <div className="text-center py-6 space-y-4">
+                  {outfit.status === 'failed' && outfit.errorCode && (
+                    <div className="bg-destructive/10 text-destructive rounded-lg p-4 text-sm">
+                      <p className="font-medium">Score generation failed</p>
+                      <p className="mt-1">{outfit.errorMessage}</p>
+                    </div>
+                  )}
+                  <p className="text-muted-foreground">
+                    {outfit.status === 'pending'
+                      ? 'Generate an AI score for this outfit combination.'
+                      : 'Try generating the score again.'}
+                  </p>
+                  <Button onClick={handleGenerateScore} disabled={scoreMutation.isPending}>
+                    {scoreMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Generate Score
+                      </>
+                    )}
+                  </Button>
+                </div>
+              ) : outfit.status === 'running' || scoreMutation.isPending ? (
+                <div className="space-y-4 py-4">
+                  <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <p>Analyzing your outfit...</p>
+                  </div>
+                  <div className="space-y-3">
+                    {[
+                      'Fit Balance',
+                      'Proportions',
+                      'Color Harmony',
+                      'Occasion Match',
+                      'Season & Material',
+                    ].map((label) => (
+                      <div key={label} className="space-y-1">
+                        <div className="flex justify-between text-sm">
+                          <Skeleton className="h-4 w-24" />
+                          <Skeleton className="h-4 w-8" />
+                        </div>
+                        <Skeleton className="h-2 w-full" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : score ? (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Overall Score</p>
+                      <p className="text-4xl font-bold">{score.scores.overall}</p>
+                    </div>
+                    <Badge className={`text-sm px-3 py-1 ${verdictColor(score.verdict)}`}>
+                      {score.verdict === 'great'
+                        ? 'Great Outfit!'
+                        : score.verdict === 'ok'
+                          ? 'Decent Outfit'
+                          : 'Not Recommended'}
+                    </Badge>
+                  </div>
+                  <div className="space-y-3">
+                    <ScoreBar label="Fit & Balance" value={score.scores.fit_balance} />
+                    <ScoreBar label="Proportions" value={score.scores.proportions} />
+                    <ScoreBar label="Color Harmony" value={score.scores.color_harmony} />
+                    <ScoreBar label="Occasion Match" value={score.scores.occasion_match} />
+                    <ScoreBar label="Season & Material" value={score.scores.season_material} />
+                  </div>
+                  {score.why.length > 0 && (
+                    <div>
+                      <h4 className="font-medium mb-2">Analysis</h4>
+                      <ul className="space-y-1 text-sm text-muted-foreground">
+                        {score.why.map((w, i) => (
+                          <li key={i} className="flex gap-2">
+                            <span className="text-primary mt-0.5">•</span>
+                            <span>{w}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {score.improvements.length > 0 && (
+                    <div>
+                      <h4 className="font-medium mb-2">Suggestions</h4>
+                      <ul className="space-y-1 text-sm text-muted-foreground">
+                        {score.improvements.map((imp, i) => (
+                          <li key={i} className="flex gap-2">
+                            <span className="text-yellow-500 mt-0.5">→</span>
+                            <span>{imp}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {score.alternatives && score.alternatives.length > 0 && (
+                    <div>
+                      <h4 className="font-medium mb-2">Alternatives to consider</h4>
+                      <ul className="space-y-1 text-sm text-muted-foreground">
+                        {score.alternatives.map((alt, i) => (
+                          <li key={i} className="flex gap-2">
+                            <span className="text-blue-500 mt-0.5">✦</span>
+                            <span>{alt}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGenerateScore}
+                    disabled={scoreMutation.isPending}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Re-score
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-sm">No score data available.</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
