@@ -19,20 +19,21 @@ export const AVATAR_IMAGE_MODEL = process.env.AVATAR_IMAGE_MODEL || 'gemini-3-pr
 
 // ── Interleaved prompt segments ──
 
-const INTRO_AND_BODY = `Edit the following person photo to change their clothes and refine their face.
-Here is the person's FULL BODY photo — use this for body shape, proportions, build, and skin tone. Ignore their current clothing:`;
+function introAndBody(heightCm: number): string {
+  return `Edit the following person photo to change their clothes and refine their face.
+The person is ${heightCm} cm tall.
+Here is the person's FULL BODY photo — use this for body shape, proportions, build, and skin tone. The person's height is ${heightCm} cm — use this to make proportions realistic. Ignore their current clothing:`;
+}
 
-const FACE_INTRO = `Here is a CLOSE-UP FACE photo of the same person — use this to refine the face in the output. Copy exact facial features, hair style, and hair color from this close-up. Enhance the face with subtle, complimentary light makeup (even skin tone, soft natural blush, light mascara, neutral lip tint) and neat, polished hairstyling that suits the person's hair type and length:`;
+const FACE_INTRO = `Here is a CLOSE-UP FACE photo of the same person — use this to refine the face in the output. Copy exact facial features, hair style, hair color, makeup from this close-up. Enhance the face with complimentary fashionable makeup and neat, polished hairstyling that suits the person's hair type and length:`;
 
 const OUTFIT_INTRO = `Here is the TARGET OUTFIT — redress the person in exactly these clothes. Copy the garment colors, patterns, and silhouettes. Fit them naturally to the person's body from the first photo:`;
 
 const FINAL_INSTRUCTION = `Now generate the final image:
-- Take the person from the first photo (body shape, proportions, skin tone)
-- Apply the face details from the second photo (facial features, hair)
+- Take the person from the first photo (body shape, proportions, skin tone) in relaxed modeling pose front-facing, head to feet visible full-height
+- The person's proportions should look natural for the given height
+- Apply the face details from the second photo (facial features, hair, makeup)
 - Dress them in the outfit from the third photo
-- Add subtle, flattering light makeup: even skin tone, soft natural blush, light mascara, neutral lip color — keep it natural and complimentary, not heavy or dramatic
-- Style the hair neatly: tidy and polished version of the person's natural hair, keeping the same color and approximate length
-- Neutral front-facing standing pose, head to feet visible
 - Clean solid white or light gray background
 - ONE person, ONE image, no text, no watermark
 - IMPORTANT: the body build must come from the FIRST photo, NOT from the outfit photo`;
@@ -40,6 +41,7 @@ const FINAL_INSTRUCTION = `Now generate the final image:
 export type GenerateAvatarImageInput = {
   bodyPhotoUploadId: string;
   facePhotoUploadId: string;
+  heightCm: number;
 };
 
 export type GenerateAvatarImageResult = {
@@ -67,9 +69,9 @@ function getDefaultOutfitPath(): string {
 export async function generateAvatarImage(
   input: GenerateAvatarImageInput
 ): Promise<GenerateAvatarImageResult> {
-  const { bodyPhotoUploadId, facePhotoUploadId } = input;
+  const { bodyPhotoUploadId, facePhotoUploadId, heightCm } = input;
 
-  log.info({ bodyPhotoUploadId, facePhotoUploadId }, 'loading avatar photos');
+  log.info({ bodyPhotoUploadId, facePhotoUploadId, heightCm }, 'loading avatar photos');
 
   const [bodyData, faceData] = await Promise.all([
     loadBufferFromUpload(bodyPhotoUploadId),
@@ -84,7 +86,7 @@ export async function generateAvatarImage(
   const outfitBuffer = Buffer.from(await outfitFile.arrayBuffer());
 
   const contentParts: ContentPart[] = [
-    { text: INTRO_AND_BODY },
+    { text: introAndBody(heightCm) },
     { inlineData: { data: bodyData.buffer.toString('base64'), mimeType: bodyData.mime } },
     { text: FACE_INTRO },
     { inlineData: { data: faceData.buffer.toString('base64'), mimeType: faceData.mime } },

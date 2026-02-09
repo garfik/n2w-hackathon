@@ -57,6 +57,7 @@ export type CreateAvatarResponseDto = z.output<typeof CreateAvatarResponseDtoSch
 export const GenerateAvatarImageBodySchema = z.object({
   bodyPhotoUploadId: z.string().uuid(),
   facePhotoUploadId: z.string().uuid(),
+  heightCm: z.number().int().min(50).max(250),
 });
 export type GenerateAvatarImageBody = z.output<typeof GenerateAvatarImageBodySchema>;
 

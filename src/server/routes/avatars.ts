@@ -107,7 +107,7 @@ export const avatarsRoutes = router({
       if (!bodyParse.success) {
         return apiErr({ message: 'Validation failed', issues: bodyParse.error.flatten() }, 400);
       }
-      const { bodyPhotoUploadId, facePhotoUploadId } = bodyParse.data;
+      const { bodyPhotoUploadId, facePhotoUploadId, heightCm } = bodyParse.data;
 
       const [bodyRow, faceRow] = await Promise.all([
         db.select().from(upload).where(eq(upload.id, bodyPhotoUploadId)),
@@ -121,7 +121,7 @@ export const avatarsRoutes = router({
       }
 
       try {
-        const result = await generateAvatarImage({ bodyPhotoUploadId, facePhotoUploadId });
+        const result = await generateAvatarImage({ bodyPhotoUploadId, facePhotoUploadId, heightCm });
         const dtoResult = parseResponseDto(GenerateAvatarImageResponseDtoSchema, {
           success: true as const,
           data: { uploadId: result.uploadId },

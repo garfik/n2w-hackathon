@@ -95,6 +95,7 @@ export type AnalyzeAvatarParams = { avatarId: string };
 export type GenerateAvatarImageParams = {
   bodyPhotoUploadId: string;
   facePhotoUploadId: string;
+  heightCm: number;
 };
 
 export async function generateAvatarImage(
@@ -107,6 +108,7 @@ export async function generateAvatarImage(
     body: JSON.stringify({
       bodyPhotoUploadId: params.bodyPhotoUploadId,
       facePhotoUploadId: params.facePhotoUploadId,
+      heightCm: params.heightCm,
     }),
   });
   const raw = await res.json();

@@ -120,29 +120,47 @@ export function AvatarNewPage() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+  const [generatedUploadId, setGeneratedUploadId] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const createSubmittingRef = useRef(false);
+
+  const handleGenerate = async () => {
+    if (!bodyUploadResult || !faceUploadResult) return;
+    if (typeof heightCm !== 'number' || !Number.isFinite(heightCm) || heightCm < 50) return;
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      const genResult = await generateAvatarImage({
+        bodyPhotoUploadId: bodyUploadResult.id,
+        facePhotoUploadId: faceUploadResult.id,
+        heightCm,
+      });
+      setGeneratedUploadId(genResult.data.uploadId);
+      setGeneratedImageUrl(`/api/uploads/${genResult.data.uploadId}/image`);
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : 'Generation failed');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const handleCreateAvatar = async (e: FormEvent) => {
     e.preventDefault();
-    if (!bodyUploadResult || !faceUploadResult) return;
+    if (!generatedUploadId) return;
     if (createSubmittingRef.current) return;
     createSubmittingRef.current = true;
     setCreateError(null);
     setCreateLoading(true);
     try {
-      const genResult = await generateAvatarImage({
-        bodyPhotoUploadId: bodyUploadResult.id,
-        facePhotoUploadId: faceUploadResult.id,
-      });
-      setGeneratedImageUrl(`/api/uploads/${genResult.data.uploadId}/image`);
       const newId = await createMutation.mutateAsync({
         name: avatarName.trim() || 'Avatar',
-        uploadId: genResult.data.uploadId,
+        uploadId: generatedUploadId,
       });
       setAvatarId(newId);
       setAnalysisStatus('loading');
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Generation failed');
+      setCreateError(err instanceof Error ? err.message : 'Create failed');
     } finally {
       createSubmittingRef.current = false;
       setCreateLoading(false);
@@ -203,6 +221,9 @@ export function AvatarNewPage() {
     setAvatarName('');
     setAvatarId(null);
     setGeneratedImageUrl(null);
+    setGeneratedUploadId(null);
+    setGenerating(false);
+    setGenerateError(null);
     setAnalysisStatus('idle');
     setFormProfile(null);
     setAnalysisError(null);
@@ -218,8 +239,10 @@ export function AvatarNewPage() {
   };
 
   const hasBothUploads = !!bodyUploadResult && !!faceUploadResult;
+  const hasGenerated = !!generatedUploadId && !!generatedImageUrl;
   const showStep1 = !avatarId && !hasBothUploads;
-  const showStep2 = !avatarId && hasBothUploads;
+  const showStep2 = !avatarId && hasBothUploads && !hasGenerated;
+  const showStep3 = !avatarId && hasGenerated;
   const showAnalyzing = avatarId && analysisStatus === 'loading';
   const showError = avatarId && analysisStatus === 'error';
   const showForm = avatarId && analysisStatus === 'success' && formProfile;
@@ -267,20 +290,32 @@ export function AvatarNewPage() {
           </Card>
         </div>
 
-        {/* Right: name / generated photo / analyzing / form / error */}
+        {/* Right: steps / generated photo / analyzing / form / error */}
         <div className="space-y-4">
-          {generatedImageUrl && avatarId && (
+          {generatedImageUrl && (
             <Card>
               <CardHeader className="gap-2">
                 <CardTitle className="text-xl font-bold">Generated avatar</CardTitle>
                 <CardDescription>Your avatar with the default outfit applied.</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 <img
                   src={generatedImageUrl}
                   alt="Generated avatar"
                   className="w-full rounded-md object-contain max-h-[400px] bg-muted"
                 />
+                {!avatarId && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    className="w-full"
+                  >
+                    {generating ? 'Regenerating…' : 'Regenerate'}
+                  </Button>
+                )}
               </CardContent>
             </Card>
           )}
@@ -298,9 +333,51 @@ export function AvatarNewPage() {
           {showStep2 && (
             <Card>
               <CardHeader className="gap-2">
-                <CardTitle className="text-xl font-bold">Avatar name</CardTitle>
+                <CardTitle className="text-xl font-bold">Generate avatar</CardTitle>
                 <CardDescription>
-                  Give your avatar a display name, then generate the avatar image.
+                  Enter your height, then generate the avatar image.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="height-cm">Height (cm)</Label>
+                  <Input
+                    id="height-cm"
+                    type="number"
+                    min={50}
+                    max={250}
+                    value={heightCm}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setHeightCm(v === '' ? '' : Number(v));
+                    }}
+                    placeholder="170"
+                    required
+                    disabled={generating}
+                  />
+                </div>
+                {generating && <Progress value={undefined} className="h-2" />}
+                {generateError && (
+                  <p className="text-sm text-destructive" role="alert">
+                    {generateError}
+                  </p>
+                )}
+                <Button
+                  onClick={handleGenerate}
+                  disabled={generating || typeof heightCm !== 'number' || heightCm < 50}
+                >
+                  {generating ? 'Generating…' : 'Generate avatar'}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {showStep3 && (
+            <Card>
+              <CardHeader className="gap-2">
+                <CardTitle className="text-xl font-bold">Save avatar</CardTitle>
+                <CardDescription>
+                  Happy with the result? Give it a name and continue.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -323,7 +400,7 @@ export function AvatarNewPage() {
                     </p>
                   )}
                   <Button type="submit" disabled={createLoading}>
-                    {createLoading ? 'Generating avatar…' : 'Generate avatar'}
+                    {createLoading ? 'Saving…' : 'Save & continue'}
                   </Button>
                 </form>
               </CardContent>
