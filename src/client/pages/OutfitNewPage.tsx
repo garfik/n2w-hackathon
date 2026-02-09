@@ -1,4 +1,5 @@
-import { useState, useMemo, type FormEvent } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import type { FormEvent } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@components/ui/card';
 import { Button } from '@components/ui/button';
@@ -13,11 +14,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@components/ui/select';
+import { useAvatars } from '@client/lib/useAvatars';
 import { useGarmentsList, useCreateOutfit } from '@client/lib/apiHooks';
 import { GarmentImage } from '@client/components/GarmentImage';
 import type { GarmentListItem } from '@client/lib/n2wApi';
 import { DETECT_CATEGORIES } from '@shared/ai-schemas/garment';
 import { Check, Loader2, ArrowLeft } from 'lucide-react';
+
+function getAvatarImageUrl(photoUploadId: string | null): string | null {
+  if (!photoUploadId) return null;
+  return `/api/uploads/${photoUploadId}/image`;
+}
 
 const OCCASIONS = ['casual', 'work', 'party', 'date', 'sport', 'formal', 'other'];
 const ALL_CATEGORIES_VALUE = '__all__';
@@ -68,7 +75,21 @@ function GarmentCheckCard({
 
 export function OutfitNewPage() {
   const navigate = useNavigate();
-  const { avatarId } = useParams<{ avatarId: string }>();
+  const { avatarId: avatarIdParam } = useParams<{ avatarId: string }>();
+  const { avatars, isPending: avatarsPending } = useAvatars();
+
+  const effectiveAvatarId = useMemo(() => {
+    if (!avatars.length) return undefined;
+    const fromRoute = avatarIdParam && avatars.some((a) => a.id === avatarIdParam);
+    return fromRoute ? avatarIdParam : avatars[0]?.id;
+  }, [avatars, avatarIdParam]);
+
+  useEffect(() => {
+    if (avatars.length === 0 || !effectiveAvatarId) return;
+    if (effectiveAvatarId !== avatarIdParam) {
+      navigate(`/app/avatars/${effectiveAvatarId}/outfits/new`, { replace: true });
+    }
+  }, [avatars.length, effectiveAvatarId, avatarIdParam, navigate]);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [occasion, setOccasion] = useState<string>('');
@@ -76,6 +97,10 @@ export function OutfitNewPage() {
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES_VALUE);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  const handleAvatarChange = (newAvatarId: string) => {
+    navigate(`/app/avatars/${newAvatarId}/outfits/new`);
+  };
 
   const params = useMemo(
     () => ({
@@ -105,7 +130,7 @@ export function OutfitNewPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!avatarId) {
+    if (!effectiveAvatarId) {
       setError('No avatar selected');
       return;
     }
@@ -121,13 +146,13 @@ export function OutfitNewPage() {
 
     createMutation.mutate(
       {
-        avatarId,
+        avatarId: effectiveAvatarId,
         garmentIds: [...selectedIds],
         occasion: effectiveOccasion,
       },
       {
         onSuccess: (result) => {
-          navigate(`/app/avatars/${avatarId}/outfits/${result.outfitId}`, { replace: true });
+          navigate(`/app/avatars/${effectiveAvatarId}/outfits/${result.outfitId}`, { replace: true });
         },
         onError: (err) => {
           setError(err.message);
@@ -136,11 +161,38 @@ export function OutfitNewPage() {
     );
   };
 
+  if (avatarsPending) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <Skeleton className="h-8 w-32" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (!avatars.length) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>No avatars</CardTitle>
+            <CardDescription>Create an avatar first to create outfits.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link to="/app/avatars/new">Create avatar</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
         <Button variant="ghost" size="sm" asChild>
-          <Link to={`/app/avatars/${avatarId}/outfits`}>
+          <Link to={effectiveAvatarId ? `/app/avatars/${effectiveAvatarId}/outfits` : '/app/avatars'}>
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back to outfits
           </Link>
@@ -156,6 +208,37 @@ export function OutfitNewPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Avatar selection */}
+            <div className="space-y-2">
+              <Label className="text-base font-semibold">Avatar</Label>
+              <Select value={effectiveAvatarId ?? ''} onValueChange={handleAvatarChange}>
+                <SelectTrigger className="w-full max-w-xs">
+                  <SelectValue placeholder="Select avatar" />
+                </SelectTrigger>
+                <SelectContent>
+                  {avatars.map((a) => {
+                    const imageUrl = getAvatarImageUrl(a.photoUploadId);
+                    return (
+                      <SelectItem key={a.id} value={a.id}>
+                        <div className="flex items-center gap-2">
+                          {imageUrl ? (
+                            <img
+                              src={imageUrl}
+                              alt=""
+                              className="h-8 w-8 rounded object-cover shrink-0"
+                            />
+                          ) : (
+                            <div className="h-8 w-8 rounded bg-muted shrink-0" />
+                          )}
+                          <span>{a.name}</span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Garment selection */}
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
