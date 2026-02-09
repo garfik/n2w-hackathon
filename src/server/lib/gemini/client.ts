@@ -222,9 +222,7 @@ export async function generateJson<S extends z.ZodTypeAny>(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** A content part: either text or an inline image. */
-export type ContentPart =
-  | { text: string }
-  | { inlineData: { data: string; mimeType: string } };
+export type ContentPart = { text: string } | { inlineData: { data: string; mimeType: string } };
 
 export type GenerateImageOptions = GenerateOptions & {
   prompt: string;

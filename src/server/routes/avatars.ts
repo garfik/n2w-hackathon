@@ -93,10 +93,7 @@ export const avatarsRoutes = router({
     async POST(req) {
       const contentType = req.headers.get('content-type') ?? '';
       if (!contentType.includes('application/json')) {
-        return apiErr(
-          { message: 'Expected application/json with bodyPhotoUploadId' },
-          400
-        );
+        return apiErr({ message: 'Expected application/json with bodyPhotoUploadId' }, 400);
       }
       let rawBody: unknown;
       try {

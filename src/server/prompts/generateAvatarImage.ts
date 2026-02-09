@@ -87,10 +87,9 @@ export async function generateAvatarImage(
   }
   const outfitBuffer = Buffer.from(await outfitFile.arrayBuffer());
 
-  const finalText =
-    userPrompt?.trim()
-      ? `${FINAL_INSTRUCTION}\n\nAdditional instructions from the user: ${userPrompt.trim()}`
-      : FINAL_INSTRUCTION;
+  const finalText = userPrompt?.trim()
+    ? `${FINAL_INSTRUCTION}\n\nAdditional instructions from the user: ${userPrompt.trim()}`
+    : FINAL_INSTRUCTION;
 
   const contentParts: ContentPart[] = [
     { text: introAndBody(heightCm) },

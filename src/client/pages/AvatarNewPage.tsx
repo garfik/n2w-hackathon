@@ -15,7 +15,11 @@ import {
   SelectValue,
 } from '@components/ui/select';
 import { Progress } from '@components/ui/progress';
-import { analyzeBodyPhoto, generateAvatarImage, type AnalyzeErrorResponse } from '@client/lib/n2wApi';
+import {
+  analyzeBodyPhoto,
+  generateAvatarImage,
+  type AnalyzeErrorResponse,
+} from '@client/lib/n2wApi';
 import { useCreateAvatar, useUpdateAvatar } from '@client/lib/useAvatars';
 import type { AvatarBodyProfile, AvatarBodyProfileClean } from '@shared/dtos/avatar';
 import { ImageUploadCard, type UploadResult } from '@client/components/ImageUploadCard';
@@ -222,7 +226,8 @@ export function AvatarNewPage() {
   const hasBothUploads = !!bodyUploadResult && !!faceUploadResult;
   const hasGenerated = !!generatedUploadId && !!generatedImageUrl;
   const showStep1 = !hasBothUploads;
-  const showStep2 = hasBothUploads && !formProfile && analysisStatus !== 'loading' && analysisStatus !== 'error';
+  const showStep2 =
+    hasBothUploads && !formProfile && analysisStatus !== 'loading' && analysisStatus !== 'error';
   const showAnalyzing = analysisStatus === 'loading';
   const showAnalysisError = analysisStatus === 'error';
   const showForm = !!formProfile;
@@ -365,7 +370,7 @@ export function AvatarNewPage() {
             </Alert>
           )}
 
-{showSaveStep && (
+          {showSaveStep && (
             <Card>
               <CardHeader className="gap-2">
                 <CardTitle className="text-xl font-bold">Save avatar</CardTitle>
@@ -405,7 +410,8 @@ export function AvatarNewPage() {
               <CardHeader className="gap-2">
                 <CardTitle className="text-xl font-bold">Generate avatar</CardTitle>
                 <CardDescription>
-                  Optionally add a prompt to guide the generation (e.g. pose, style). Then generate the avatar image.
+                  Optionally add a prompt to guide the generation (e.g. pose, style). Then generate
+                  the avatar image.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -456,8 +462,6 @@ export function AvatarNewPage() {
               </CardContent>
             </Card>
           )}
-
-          
 
           {showForm && formProfile && (
             <Card>

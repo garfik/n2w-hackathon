@@ -8,12 +8,12 @@ services:
     env_file: .env
     environment:
       NODE_ENV: production
-      RUN_MIGRATIONS_ON_START: "1"
+      RUN_MIGRATIONS_ON_START: '1'
       DATABASE_URL: postgres://n2w:n2w@db:5432/n2w
       S3_ENDPOINT: http://s3:9000
-      PORT: "7001"
+      PORT: '7001'
     ports:
-      - "7001:7001"
+      - '7001:7001'
     depends_on:
       db:
         condition: service_healthy
