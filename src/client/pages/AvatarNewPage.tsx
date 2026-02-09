@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@components/ui/card';
 import { Button } from '@components/ui/button';
@@ -15,10 +15,11 @@ import {
   SelectValue,
 } from '@components/ui/select';
 import { Progress } from '@components/ui/progress';
-import { analyzeAvatar, generateAvatarImage, type AnalyzeErrorResponse } from '@client/lib/n2wApi';
+import { analyzeBodyPhoto, generateAvatarImage, type AnalyzeErrorResponse } from '@client/lib/n2wApi';
 import { useCreateAvatar, useUpdateAvatar } from '@client/lib/useAvatars';
 import type { AvatarBodyProfile, AvatarBodyProfileClean } from '@shared/dtos/avatar';
 import { ImageUploadCard, type UploadResult } from '@client/components/ImageUploadCard';
+import { Textarea } from '@components/ui/textarea';
 
 /** Strip AI metadata (confidence, issues) from body profile before saving */
 function toCleanProfile(profile: AvatarBodyProfile): AvatarBodyProfileClean {
@@ -111,19 +112,37 @@ export function AvatarNewPage() {
   const [bodyUploadResult, setBodyUploadResult] = useState<UploadResult | null>(null);
   const [faceUploadResult, setFaceUploadResult] = useState<UploadResult | null>(null);
   const [avatarName, setAvatarName] = useState('');
-  const [avatarId, setAvatarId] = useState<string | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('idle');
   const [formProfile, setFormProfile] = useState<AvatarBodyProfile | null>(null);
   const [analysisError, setAnalysisError] = useState<AnalyzeErrorResponse['error'] | null>(null);
   const [heightCm, setHeightCm] = useState<number | ''>('');
   const [createLoading, setCreateLoading] = useState(false);
-  const [saveLoading, setSaveLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [generatedUploadId, setGeneratedUploadId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [generatePrompt, setGeneratePrompt] = useState('');
   const createSubmittingRef = useRef(false);
+
+  const handleRunAnalysis = async () => {
+    if (!bodyUploadResult) return;
+    setAnalysisStatus('loading');
+    setAnalysisError(null);
+    try {
+      const result = await analyzeBodyPhoto({ bodyPhotoUploadId: bodyUploadResult.id });
+      if (result.success === true) {
+        setFormProfile(result.data);
+        setAnalysisStatus('success');
+      } else {
+        setAnalysisError(result.error);
+        setAnalysisStatus('error');
+      }
+    } catch {
+      setAnalysisError({ code: 'LOW_QUALITY', message: 'Analysis failed', issues: [] });
+      setAnalysisStatus('error');
+    }
+  };
 
   const handleGenerate = async () => {
     if (!bodyUploadResult || !faceUploadResult) return;
@@ -135,6 +154,7 @@ export function AvatarNewPage() {
         bodyPhotoUploadId: bodyUploadResult.id,
         facePhotoUploadId: faceUploadResult.id,
         heightCm,
+        prompt: generatePrompt.trim() || undefined,
       });
       setGeneratedUploadId(genResult.data.uploadId);
       setGeneratedImageUrl(`/api/uploads/${genResult.data.uploadId}/image`);
@@ -157,8 +177,16 @@ export function AvatarNewPage() {
         name: avatarName.trim() || 'Avatar',
         uploadId: generatedUploadId,
       });
-      setAvatarId(newId);
-      setAnalysisStatus('loading');
+      const height =
+        typeof heightCm === 'number' && Number.isFinite(heightCm) ? heightCm : undefined;
+      if (formProfile) {
+        await updateMutation.mutateAsync({
+          avatarId: newId,
+          bodyProfileJson: toCleanProfile(formProfile),
+          heightCm: height,
+        });
+      }
+      navigate(`/app/avatars/${newId}/outfits`, { replace: true });
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Create failed');
     } finally {
@@ -167,63 +195,16 @@ export function AvatarNewPage() {
     }
   };
 
-  useEffect(() => {
-    if (!avatarId || analysisStatus !== 'loading') return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await analyzeAvatar({ avatarId });
-        if (cancelled) return;
-        if (result.success === true) {
-          setFormProfile(result.data);
-          setAnalysisStatus('success');
-        } else {
-          setAnalysisError(result.error);
-          setAnalysisStatus('error');
-        }
-      } catch {
-        if (!cancelled) {
-          setAnalysisError({ code: 'LOW_QUALITY', message: 'Analysis failed', issues: [] });
-          setAnalysisStatus('error');
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [avatarId, analysisStatus]);
-
-  const handleSaveContinue = async () => {
-    if (!avatarId) return;
-    setSaveLoading(true);
-    try {
-      const height =
-        typeof heightCm === 'number' && Number.isFinite(heightCm) ? heightCm : undefined;
-      if (formProfile) {
-        // Strip confidence and issues before saving - only store clean data
-        await updateMutation.mutateAsync({
-          avatarId,
-          bodyProfileJson: toCleanProfile(formProfile),
-          heightCm: height,
-        });
-      }
-      // Navigate to outfits for this avatar
-      navigate(`/app/avatars/${avatarId}/outfits`, { replace: true });
-    } catch {
-      setSaveLoading(false);
-    }
-  };
-
   const handleUploadAnother = () => {
     createSubmittingRef.current = false;
     setBodyUploadResult(null);
     setFaceUploadResult(null);
     setAvatarName('');
-    setAvatarId(null);
     setGeneratedImageUrl(null);
     setGeneratedUploadId(null);
     setGenerating(false);
     setGenerateError(null);
+    setGeneratePrompt('');
     setAnalysisStatus('idle');
     setFormProfile(null);
     setAnalysisError(null);
@@ -240,12 +221,13 @@ export function AvatarNewPage() {
 
   const hasBothUploads = !!bodyUploadResult && !!faceUploadResult;
   const hasGenerated = !!generatedUploadId && !!generatedImageUrl;
-  const showStep1 = !avatarId && !hasBothUploads;
-  const showStep2 = !avatarId && hasBothUploads && !hasGenerated;
-  const showStep3 = !avatarId && hasGenerated;
-  const showAnalyzing = avatarId && analysisStatus === 'loading';
-  const showError = avatarId && analysisStatus === 'error';
-  const showForm = avatarId && analysisStatus === 'success' && formProfile;
+  const showStep1 = !hasBothUploads;
+  const showStep2 = hasBothUploads && !formProfile && analysisStatus !== 'loading' && analysisStatus !== 'error';
+  const showAnalyzing = analysisStatus === 'loading';
+  const showAnalysisError = analysisStatus === 'error';
+  const showForm = !!formProfile;
+  const showGenerateSection = !!formProfile;
+  const showSaveStep = hasGenerated;
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -270,7 +252,7 @@ export function AvatarNewPage() {
                 existingUpload={bodyUploadResult ?? undefined}
                 onUploaded={setBodyUploadResult}
                 onClear={() => setBodyUploadResult(null)}
-                disabled={!!avatarId}
+                disabled={showForm}
               />
             </CardContent>
           </Card>
@@ -284,42 +266,14 @@ export function AvatarNewPage() {
                 existingUpload={faceUploadResult ?? undefined}
                 onUploaded={setFaceUploadResult}
                 onClear={() => setFaceUploadResult(null)}
-                disabled={!!avatarId}
+                disabled={showForm}
               />
             </CardContent>
           </Card>
         </div>
 
-        {/* Right: steps / generated photo / analyzing / form / error */}
+        {/* Right: steps / analysis / form / generate / save */}
         <div className="space-y-4">
-          {generatedImageUrl && (
-            <Card>
-              <CardHeader className="gap-2">
-                <CardTitle className="text-xl font-bold">Generated avatar</CardTitle>
-                <CardDescription>Your avatar with the default outfit applied.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <img
-                  src={generatedImageUrl}
-                  alt="Generated avatar"
-                  className="w-full rounded-md object-contain max-h-[400px] bg-muted"
-                />
-                {!avatarId && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleGenerate}
-                    disabled={generating}
-                    className="w-full"
-                  >
-                    {generating ? 'Regenerating…' : 'Regenerate'}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
           {showStep1 && (
             <Card>
               <CardContent className="pt-6">
@@ -333,9 +287,9 @@ export function AvatarNewPage() {
           {showStep2 && (
             <Card>
               <CardHeader className="gap-2">
-                <CardTitle className="text-xl font-bold">Generate avatar</CardTitle>
+                <CardTitle className="text-xl font-bold">Height &amp; body analysis</CardTitle>
                 <CardDescription>
-                  Enter your height, then generate the avatar image.
+                  Enter your height, then run body analysis to detect proportions and traits.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -352,27 +306,66 @@ export function AvatarNewPage() {
                       setHeightCm(v === '' ? '' : Number(v));
                     }}
                     placeholder="170"
-                    required
-                    disabled={generating}
                   />
                 </div>
-                {generating && <Progress value={undefined} className="h-2" />}
-                {generateError && (
-                  <p className="text-sm text-destructive" role="alert">
-                    {generateError}
-                  </p>
-                )}
                 <Button
-                  onClick={handleGenerate}
-                  disabled={generating || typeof heightCm !== 'number' || heightCm < 50}
+                  onClick={handleRunAnalysis}
+                  disabled={typeof heightCm !== 'number' || heightCm < 50}
                 >
-                  {generating ? 'Generating…' : 'Generate avatar'}
+                  Run body analysis
                 </Button>
               </CardContent>
             </Card>
           )}
 
-          {showStep3 && (
+          {showAnalyzing && (
+            <Card>
+              <CardHeader className="gap-2">
+                <CardTitle className="text-xl font-bold">Analyzing body</CardTitle>
+                <CardDescription>Analyzing your body photo…</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Progress value={undefined} className="h-2" />
+                <div className="space-y-2">
+                  <Skeleton className="h-9 w-full" />
+                  <Skeleton className="h-9 w-full" />
+                  <Skeleton className="h-9 w-full" />
+                  <Skeleton className="h-9 w-full" />
+                  <Skeleton className="h-9 w-full" />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {showAnalysisError && analysisError && (
+            <Alert variant="destructive">
+              <AlertTitle>Analysis failed</AlertTitle>
+              <AlertDescription>
+                <p className="mb-2">{analysisError.message}</p>
+                <p className="text-sm mb-2">
+                  Please upload another full-body photo (one person, clear view).
+                </p>
+                {analysisError.issues && analysisError.issues.length > 0 && (
+                  <ul className="list-disc list-inside text-sm mb-2">
+                    {analysisError.issues.map((issue, i) => (
+                      <li key={i}>{issue}</li>
+                    ))}
+                  </ul>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUploadAnother}
+                  className="mt-2"
+                >
+                  Upload other photos
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+{showSaveStep && (
             <Card>
               <CardHeader className="gap-2">
                 <CardTitle className="text-xl font-bold">Save avatar</CardTitle>
@@ -407,59 +400,71 @@ export function AvatarNewPage() {
             </Card>
           )}
 
-          {showAnalyzing && (
+          {showGenerateSection && (
             <Card>
               <CardHeader className="gap-2">
-                <CardTitle className="text-xl font-bold">Analyzing avatar</CardTitle>
-                <CardDescription>Analyzing avatar…</CardDescription>
+                <CardTitle className="text-xl font-bold">Generate avatar</CardTitle>
+                <CardDescription>
+                  Optionally add a prompt to guide the generation (e.g. pose, style). Then generate the avatar image.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Progress value={undefined} className="h-2" />
                 <div className="space-y-2">
-                  <Skeleton className="h-9 w-full" />
-                  <Skeleton className="h-9 w-full" />
-                  <Skeleton className="h-9 w-full" />
-                  <Skeleton className="h-9 w-full" />
-                  <Skeleton className="h-9 w-full" />
+                  <Label htmlFor="generate-prompt">Additional instructions (optional)</Label>
+                  <Textarea
+                    id="generate-prompt"
+                    value={generatePrompt}
+                    onChange={(e) => setGeneratePrompt(e.target.value)}
+                    placeholder="e.g. relaxed pose, natural smile, professional look"
+                    rows={3}
+                    maxLength={2000}
+                    disabled={generating}
+                    className="resize-none"
+                  />
                 </div>
+                {generating && <Progress value={undefined} className="h-2" />}
+                {generateError && (
+                  <p className="text-sm text-destructive" role="alert">
+                    {generateError}
+                  </p>
+                )}
+                <Button
+                  onClick={handleGenerate}
+                  disabled={generating || typeof heightCm !== 'number' || heightCm < 50}
+                >
+                  {generating ? 'Generating…' : 'Generate avatar'}
+                </Button>
+                {generatedImageUrl && (
+                  <div className="space-y-3 pt-2 border-t">
+                    <img
+                      src={generatedImageUrl}
+                      alt="Generated avatar"
+                      className="w-full rounded-md object-contain max-h-[400px] bg-muted"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGenerate}
+                      disabled={generating}
+                      className="w-full"
+                    >
+                      {generating ? 'Regenerating…' : 'Regenerate'}
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
 
-          {showError && analysisError && (
-            <Alert variant="destructive">
-              <AlertTitle>Analysis failed</AlertTitle>
-              <AlertDescription>
-                <p className="mb-2">{analysisError.message}</p>
-                <p className="text-sm mb-2">
-                  Please upload another full-body photo (one person, clear view).
-                </p>
-                {analysisError.issues && analysisError.issues.length > 0 && (
-                  <ul className="list-disc list-inside text-sm mb-2">
-                    {analysisError.issues.map((issue, i) => (
-                      <li key={i}>{issue}</li>
-                    ))}
-                  </ul>
-                )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleUploadAnother}
-                  className="mt-2"
-                >
-                  Upload other photos
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
+          
 
           {showForm && formProfile && (
             <Card>
               <CardHeader className="gap-2">
                 <CardTitle className="text-xl font-bold">Body profile</CardTitle>
                 <CardDescription>
-                  Review and edit the analysis. Then save to continue.
+                  Review and edit the analysis. Then generate the avatar below.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -786,29 +791,20 @@ export function AvatarNewPage() {
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="height-cm">Height (cm)</Label>
+                  <Label htmlFor="height-cm-form">Height (cm)</Label>
                   <Input
-                    id="height-cm"
+                    id="height-cm-form"
                     type="number"
-                    min={0}
+                    min={50}
                     max={250}
                     placeholder="170"
                     value={heightCm === '' ? '' : heightCm}
                     onChange={(e) => {
                       const v = e.target.value;
-                      setHeightCm(v === '' ? '' : parseInt(v, 10));
+                      setHeightCm(v === '' ? '' : Number(v));
                     }}
                   />
                 </div>
-
-                <Button
-                  type="button"
-                  onClick={handleSaveContinue}
-                  disabled={saveLoading}
-                  className="w-full"
-                >
-                  {saveLoading ? 'Saving…' : 'Save & Continue'}
-                </Button>
               </CardContent>
             </Card>
           )}

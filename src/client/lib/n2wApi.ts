@@ -5,6 +5,7 @@ import {
   UpdateAvatarResponseDtoSchema,
   DeleteAvatarResponseDtoSchema,
   AnalyzeAvatarResponseDtoSchema,
+  AnalyzeAvatarErrorDtoSchema,
   GenerateAvatarImageResponseDtoSchema,
   type AvatarDto,
   type CreateAvatarParams,
@@ -92,11 +93,34 @@ export type AnalyzeResponse = AnalyzeAvatarResponseDto;
 
 export type AnalyzeAvatarParams = { avatarId: string };
 
+export type AnalyzeBodyPhotoParams = { bodyPhotoUploadId: string };
+
 export type GenerateAvatarImageParams = {
   bodyPhotoUploadId: string;
   facePhotoUploadId: string;
   heightCm: number;
+  prompt?: string;
 };
+
+export async function analyzeBodyPhoto(
+  params: AnalyzeBodyPhotoParams
+): Promise<AnalyzeAvatarResponseDto> {
+  const res = await fetch('/api/avatars/analyze-body', {
+    method: 'POST',
+    credentials,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bodyPhotoUploadId: params.bodyPhotoUploadId }),
+  });
+  const raw = await res.json();
+  const parsed = AnalyzeAvatarResponseDtoSchema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  if (res.status === 422) {
+    const errParsed = AnalyzeAvatarErrorDtoSchema.safeParse(raw);
+    if (errParsed.success) return errParsed.data;
+  }
+  if (!res.ok) parseErrorResponse(raw, 'Body analysis failed');
+  throw new Error('Invalid analyze body response');
+}
 
 export async function generateAvatarImage(
   params: GenerateAvatarImageParams
@@ -109,6 +133,7 @@ export async function generateAvatarImage(
       bodyPhotoUploadId: params.bodyPhotoUploadId,
       facePhotoUploadId: params.facePhotoUploadId,
       heightCm: params.heightCm,
+      ...(params.prompt != null && params.prompt !== '' && { prompt: params.prompt }),
     }),
   });
   const raw = await res.json();

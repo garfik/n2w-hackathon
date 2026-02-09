@@ -18,6 +18,7 @@ import {
   AnalyzeAvatarErrorDtoSchema,
   CreateAvatarBodySchema,
   UpdateAvatarBodySchema,
+  AnalyzeBodyPhotoBodySchema,
   GenerateAvatarImageBodySchema,
   GenerateAvatarImageResponseDtoSchema,
 } from '@shared/dtos/avatar';
@@ -88,6 +89,70 @@ export const avatarsRoutes = router({
     },
   },
 
+  '/api/avatars/analyze-body': {
+    async POST(req) {
+      const contentType = req.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) {
+        return apiErr(
+          { message: 'Expected application/json with bodyPhotoUploadId' },
+          400
+        );
+      }
+      let rawBody: unknown;
+      try {
+        rawBody = await req.json();
+      } catch {
+        return apiErr({ message: 'Invalid JSON' }, 400);
+      }
+      const bodyParse = AnalyzeBodyPhotoBodySchema.safeParse(rawBody);
+      if (!bodyParse.success) {
+        return apiErr({ message: 'Validation failed', issues: bodyParse.error.flatten() }, 400);
+      }
+      const { bodyPhotoUploadId } = bodyParse.data;
+
+      const [uploadRow] = await db.select().from(upload).where(eq(upload.id, bodyPhotoUploadId));
+      if (!uploadRow) {
+        return apiErr({ message: 'Body photo upload not found' }, 404);
+      }
+
+      const buffer = await getObjectBuffer(uploadRow.storedKey);
+      const base64 = buffer.toString('base64');
+      const mimeType = uploadRow.storedMime;
+
+      try {
+        const raw = await analyzeAvatarLib([{ base64, mimeType }]);
+        const analysisResult = AvatarAnalysisResultSchema.safeParse(raw);
+        if (!analysisResult.success) {
+          return apiErr({ message: 'Invalid analysis response' }, 502);
+        }
+        const analysis = analysisResult.data;
+        const response = analysis as {
+          success: boolean;
+          data?: unknown;
+          error?: { code: string; message: string; issues: string[] };
+        };
+        if (response.success === false) {
+          const dtoResult = parseResponseDto(AnalyzeAvatarErrorDtoSchema, {
+            success: false as const,
+            error: response.error!,
+          });
+          if (!dtoResult.ok) return dtoResult.response;
+          return Response.json(dtoResult.data, { status: 422 });
+        }
+        const dtoResult = parseResponseDto(AnalyzeAvatarSuccessDtoSchema, {
+          success: true as const,
+          data: response.data,
+        });
+        if (!dtoResult.ok) return dtoResult.response;
+        return Response.json(dtoResult.data);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error({ err, bodyPhotoUploadId }, 'analyze body photo failed');
+        return apiErr({ message: message.length > 500 ? message.slice(0, 500) : message }, 502);
+      }
+    },
+  },
+
   '/api/avatars/generate-image': {
     async POST(req) {
       const contentType = req.headers.get('content-type') ?? '';
@@ -107,7 +172,7 @@ export const avatarsRoutes = router({
       if (!bodyParse.success) {
         return apiErr({ message: 'Validation failed', issues: bodyParse.error.flatten() }, 400);
       }
-      const { bodyPhotoUploadId, facePhotoUploadId, heightCm } = bodyParse.data;
+      const { bodyPhotoUploadId, facePhotoUploadId, heightCm, prompt } = bodyParse.data;
 
       const [bodyRow, faceRow] = await Promise.all([
         db.select().from(upload).where(eq(upload.id, bodyPhotoUploadId)),
@@ -121,7 +186,12 @@ export const avatarsRoutes = router({
       }
 
       try {
-        const result = await generateAvatarImage({ bodyPhotoUploadId, facePhotoUploadId, heightCm });
+        const result = await generateAvatarImage({
+          bodyPhotoUploadId,
+          facePhotoUploadId,
+          heightCm,
+          prompt,
+        });
         const dtoResult = parseResponseDto(GenerateAvatarImageResponseDtoSchema, {
           success: true as const,
           data: { uploadId: result.uploadId },
