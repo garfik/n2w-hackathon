@@ -53,11 +53,18 @@ export type GetAvatarResponseDto = z.output<typeof GetAvatarResponseDtoSchema>;
 export const CreateAvatarResponseDtoSchema = apiSuccessSchema(z.object({ id: z.string() }));
 export type CreateAvatarResponseDto = z.output<typeof CreateAvatarResponseDtoSchema>;
 
+// --- Analyze body photo (no avatar yet; for onboarding flow) ---
+export const AnalyzeBodyPhotoBodySchema = z.object({
+  bodyPhotoUploadId: z.string().uuid(),
+});
+export type AnalyzeBodyPhotoBody = z.output<typeof AnalyzeBodyPhotoBodySchema>;
+
 // --- Generate avatar image (body + face → one composite photo) ---
 export const GenerateAvatarImageBodySchema = z.object({
   bodyPhotoUploadId: z.string().uuid(),
   facePhotoUploadId: z.string().uuid(),
   heightCm: z.number().int().min(50).max(250),
+  prompt: z.string().max(2000).optional(),
 });
 export type GenerateAvatarImageBody = z.output<typeof GenerateAvatarImageBodySchema>;
 

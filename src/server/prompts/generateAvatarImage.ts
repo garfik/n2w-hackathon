@@ -25,7 +25,7 @@ The person is ${heightCm} cm tall.
 Here is the person's FULL BODY photo — use this for body shape, proportions, build, and skin tone. The person's height is ${heightCm} cm — use this to make proportions realistic. Ignore their current clothing:`;
 }
 
-const FACE_INTRO = `Here is a CLOSE-UP FACE photo of the same person — use this to refine the face in the output. Copy exact facial features, hair style, hair color, makeup from this close-up. Enhance the face with complimentary fashionable makeup and neat, polished hairstyling that suits the person's hair type and length:`;
+const FACE_INTRO = `Here is a CLOSE-UP FACE photo of the same person — use this to refine the face in the output. Copy exact facial features, hair style, hair color, makeup this close-up. Enhance the face with complimentary fashionable makeup if it's women and neat, polished hairstyling that suits the person's hair type and length, neutral smile:`;
 
 const OUTFIT_INTRO = `Here is the TARGET OUTFIT — redress the person in exactly these clothes. Copy the garment colors, patterns, and silhouettes. Fit them naturally to the person's body from the first photo:`;
 
@@ -42,6 +42,8 @@ export type GenerateAvatarImageInput = {
   bodyPhotoUploadId: string;
   facePhotoUploadId: string;
   heightCm: number;
+  /** Optional user prompt to guide generation (e.g. pose, style). */
+  prompt?: string;
 };
 
 export type GenerateAvatarImageResult = {
@@ -69,7 +71,7 @@ function getDefaultOutfitPath(): string {
 export async function generateAvatarImage(
   input: GenerateAvatarImageInput
 ): Promise<GenerateAvatarImageResult> {
-  const { bodyPhotoUploadId, facePhotoUploadId, heightCm } = input;
+  const { bodyPhotoUploadId, facePhotoUploadId, heightCm, prompt: userPrompt } = input;
 
   log.info({ bodyPhotoUploadId, facePhotoUploadId, heightCm }, 'loading avatar photos');
 
@@ -85,6 +87,11 @@ export async function generateAvatarImage(
   }
   const outfitBuffer = Buffer.from(await outfitFile.arrayBuffer());
 
+  const finalText =
+    userPrompt?.trim()
+      ? `${FINAL_INSTRUCTION}\n\nAdditional instructions from the user: ${userPrompt.trim()}`
+      : FINAL_INSTRUCTION;
+
   const contentParts: ContentPart[] = [
     { text: introAndBody(heightCm) },
     { inlineData: { data: bodyData.buffer.toString('base64'), mimeType: bodyData.mime } },
@@ -92,7 +99,7 @@ export async function generateAvatarImage(
     { inlineData: { data: faceData.buffer.toString('base64'), mimeType: faceData.mime } },
     { text: OUTFIT_INTRO },
     { inlineData: { data: outfitBuffer.toString('base64'), mimeType: 'image/jpeg' } },
-    { text: FINAL_INSTRUCTION },
+    { text: finalText },
   ];
 
   log.info({ partCount: contentParts.length }, 'calling Gemini for avatar image generation');
