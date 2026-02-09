@@ -15,6 +15,8 @@ import {
   GetOutfitResponseDtoSchema,
   ScoreOutfitResponseDtoSchema,
   TryonOutfitResponseDtoSchema,
+  ListOutfitsByAvatarsBodySchema,
+  ListOutfitsByAvatarsResponseDtoSchema,
 } from '@shared/dtos/outfit';
 
 const log = logger.child({ module: 'outfits' });
@@ -183,6 +185,100 @@ export const outfitsRoutes = router({
       return dtoResponse(ListOutfitsResponseDtoSchema, {
         success: true as const,
         data: { outfits },
+      });
+    },
+  },
+
+  '/api/outfits/by-avatars': {
+    async POST(req) {
+      let rawBody: unknown;
+      try {
+        rawBody = await req.json();
+      } catch {
+        return apiErr({ message: 'Invalid JSON' }, 400);
+      }
+
+      const bodyParse = ListOutfitsByAvatarsBodySchema.safeParse(rawBody);
+      if (!bodyParse.success) {
+        return apiErr({ message: 'Validation failed', issues: bodyParse.error.flatten() }, 400);
+      }
+
+      const { avatarIds } = bodyParse.data;
+
+      const rows = await db
+        .select({
+          id: outfit.id,
+          avatarId: outfit.avatarId,
+          occasion: outfit.occasion,
+          status: outfit.status,
+          scoreJson: outfit.scoreJson,
+          tryonKey: outfit.tryonKey,
+          createdAt: outfit.createdAt,
+        })
+        .from(outfit)
+        .where(inArray(outfit.avatarId, avatarIds))
+        .orderBy(desc(outfit.createdAt));
+
+      const tryonKeys = [...new Set(rows.map((r) => r.tryonKey))];
+      let tryonMap = new Map<
+        string,
+        { id: string; status: string; imageUploadId: string | null }
+      >();
+      if (tryonKeys.length > 0) {
+        const tryonRows = await db
+          .select({
+            tryonKey: tryon.tryonKey,
+            id: tryon.id,
+            status: tryon.status,
+            imageUploadId: tryon.imageUploadId,
+          })
+          .from(tryon)
+          .where(inArray(tryon.tryonKey, tryonKeys));
+        tryonMap = new Map(tryonRows.map((t) => [t.tryonKey, t]));
+      }
+
+      const groupsMap = new Map<
+        string,
+        {
+          id: string;
+          occasion: string;
+          status: string;
+          overall: number | null;
+          verdict: string | null;
+          tryonId: string | null;
+          tryonStatus: string | null;
+          tryonImageUrl: string | null;
+          createdAt: Date;
+        }[]
+      >();
+
+      for (const r of rows) {
+        const scoreData = r.scoreJson as { scores?: { overall?: number }; verdict?: string } | null;
+        const tryonData = tryonMap.get(r.tryonKey);
+        const listItem = {
+          id: r.id,
+          occasion: r.occasion,
+          status: r.status,
+          overall: scoreData?.scores?.overall ?? null,
+          verdict: scoreData?.verdict ?? null,
+          tryonId: tryonData?.id ?? null,
+          tryonStatus: tryonData?.status ?? null,
+          tryonImageUrl: tryonData?.imageUploadId ? uploadImageUrl(tryonData.imageUploadId) : null,
+          createdAt: r.createdAt,
+        };
+        const arr = groupsMap.get(r.avatarId) ?? [];
+        arr.push(listItem);
+        groupsMap.set(r.avatarId, arr);
+      }
+
+      const groups = Array.from(groupsMap.entries()).map(([avatarId, outfits]) => ({
+        avatarId,
+        outfits,
+      }));
+
+      return dtoResponse(ListOutfitsByAvatarsResponseDtoSchema, {
+        success: true as const,
+        data: { groups },
       });
     },
   },

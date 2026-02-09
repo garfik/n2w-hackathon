@@ -54,6 +54,27 @@ export const ListOutfitsResponseDtoSchema = apiSuccessSchema(
 );
 export type ListOutfitsResponseDto = z.output<typeof ListOutfitsResponseDtoSchema>;
 
+// List outfits for multiple avatars at once, grouped by avatarId
+export const AvatarOutfitsGroupDtoSchema = z.object({
+  avatarId: z.string(),
+  outfits: z.array(OutfitListItemDtoSchema),
+});
+export type AvatarOutfitsGroupDto = z.output<typeof AvatarOutfitsGroupDtoSchema>;
+
+export const ListOutfitsByAvatarsBodySchema = z.object({
+  avatarIds: z.array(z.string().min(1)).min(1, 'At least one avatarId is required'),
+});
+export type ListOutfitsByAvatarsBody = z.input<typeof ListOutfitsByAvatarsBodySchema>;
+
+export const ListOutfitsByAvatarsResponseDtoSchema = apiSuccessSchema(
+  z.object({
+    groups: z.array(AvatarOutfitsGroupDtoSchema),
+  })
+);
+export type ListOutfitsByAvatarsResponseDto = z.output<
+  typeof ListOutfitsByAvatarsResponseDtoSchema
+>;
+
 export const OutfitDetailDtoSchema = z.object({
   id: z.string(),
   avatarId: z.string(),

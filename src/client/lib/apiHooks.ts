@@ -11,6 +11,7 @@ import {
   createOutfit,
   generateScore,
   generateTryon,
+  listOutfitsByAvatars,
   listGarments,
   getGarment,
   detectGarments,
@@ -22,6 +23,7 @@ import {
   type CreateOutfitResult,
   type ScoreResult,
   type TryonResult,
+  type AvatarOutfitsGroup,
   type GarmentListItem,
   type GarmentDetail,
   type ListGarmentsParams,
@@ -43,6 +45,22 @@ export function useOutfitsList(
     queryKey: queryKeys.outfits.list(avatarId ?? ''),
     queryFn: () => listOutfits(avatarId!),
     enabled: !!avatarId,
+    ...options,
+  });
+}
+
+export function useOutfitsByAvatars(
+  avatarIds: string[] | undefined,
+  options?: Omit<UseQueryOptions<AvatarOutfitsGroup[]>, 'queryKey' | 'queryFn'>
+) {
+  const ids = avatarIds ?? [];
+  const enabled = ids.length > 0;
+  const key = ids.join(',');
+
+  return useQuery({
+    queryKey: [...queryKeys.outfits.all, 'by-avatars', key],
+    queryFn: () => listOutfitsByAvatars(ids),
+    enabled,
     ...options,
   });
 }

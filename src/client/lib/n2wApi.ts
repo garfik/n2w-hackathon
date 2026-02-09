@@ -44,6 +44,9 @@ import {
   type TryonDto,
   type ScoreResultDto,
   type CreateOutfitResponseDto,
+  type AvatarOutfitsGroupDto,
+  ListOutfitsByAvatarsBodySchema,
+  ListOutfitsByAvatarsResponseDtoSchema,
 } from '@shared/dtos/outfit';
 import { apiErrorSchema } from '@shared/api-response';
 
@@ -241,6 +244,7 @@ export type OutfitDetailGarment = OutfitGarmentDto;
 export type OutfitDetail = OutfitDetailDto;
 export type ScoreResult = ScoreResultDto;
 export type TryonResult = TryonDto;
+export type AvatarOutfitsGroup = AvatarOutfitsGroupDto;
 
 export type CreateOutfitParams = {
   avatarId: string;
@@ -274,6 +278,28 @@ export async function listOutfits(avatarId: string): Promise<OutfitListItem[]> {
   const parsed = ListOutfitsResponseDtoSchema.safeParse(raw);
   if (!parsed.success) throw new Error('Invalid list outfits response');
   return parsed.data.data.outfits;
+}
+
+export async function listOutfitsByAvatars(avatarIds: string[]): Promise<AvatarOutfitsGroup[]> {
+  if (avatarIds.length === 0) return [];
+
+  const res = await fetch('/api/outfits/by-avatars', {
+    method: 'POST',
+    credentials,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ avatarIds }),
+  });
+  const raw = await res.json();
+  if (!res.ok) parseErrorResponse(raw, 'Failed to load outfits by avatars');
+
+  const bodyParsed = ListOutfitsByAvatarsBodySchema.safeParse({ avatarIds });
+  if (!bodyParsed.success) {
+    throw new Error('Invalid list outfits by avatars request');
+  }
+
+  const parsed = ListOutfitsByAvatarsResponseDtoSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Invalid list outfits by avatars response');
+  return parsed.data.data.groups;
 }
 
 export async function getOutfit(outfitId: string): Promise<OutfitDetail> {

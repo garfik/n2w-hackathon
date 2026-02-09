@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { hasAvatarIds } from '@client/lib/avatarStorage';
 import { Button } from '@components/ui/button';
-import { Shirt, User, Menu, X } from 'lucide-react';
+import { Shirt, User, Menu, X, ImageIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 export function AppLayout() {
@@ -79,6 +79,19 @@ export function AppLayout() {
                   Garments
                 </span>
               </Link>
+              <Link
+                to="/app/outfits"
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  location.pathname.startsWith('/app/outfits')
+                    ? 'bg-accent text-accent-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <ImageIcon className="size-4" />
+                  Outfits
+                </span>
+              </Link>
             </div>
           )}
 
@@ -130,6 +143,19 @@ export function AppLayout() {
                 <span className="flex items-center gap-2">
                   <Shirt className="size-4" />
                   Garments
+                </span>
+              </Link>
+              <Link
+                to="/app/outfits"
+                className={`px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                  location.pathname.startsWith('/app/outfits')
+                    ? 'bg-accent text-accent-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <ImageIcon className="size-4" />
+                  Outfits
                 </span>
               </Link>
             </div>
